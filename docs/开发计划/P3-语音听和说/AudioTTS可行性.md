@@ -5,7 +5,7 @@
 | 日期 | 2026-09-20 |
 | 相关阶段 | [P3 方案](./方案.md) P3-B（听）/ P3-A（说） |
 | 问题 | 现在识别你的声音很不准；想把 **识别** 换成 AudioTTS；**她说话仍走 GPT-SoVITS** |
-| 结论 | **听和说拆开这条路线可行，而且仓库已经是这样拆的。** 名为 AudioTTS 的公开产品是 **文字转语音下载器，不能识别人声**，不能当 ASR 换上去。若你指的是 **FunAudioLLM** 这一家：识别侧我们已经在用它的 **Fun-ASR-Nano**；要试更准，应换同栈的 **SenseVoice-Small**，而不是换 CosyVoice / AudioTTS。 |
+| 结论 | **听和说拆开这条路线可行，而且仓库已经是这样拆的。** 名为 AudioTTS 的公开产品是 **文字转语音下载器，不能识别人声**，不能当 ASR 换上去。若你指的是 **FunAudioLLM** 这一家：识别侧默认已换同栈的 **SenseVoice-Small**；Fun-ASR-Nano 仍可配。不要换 CosyVoice / AudioTTS。 |
 
 ---
 
@@ -49,8 +49,8 @@ FunAudioLLM 这一家容易口误成「Audio TTS」，因为它同时卖听和�
 
 | 组件 | 干什么 | 我们现在 |
 | --- | --- | --- |
-| Fun-ASR-Nano | 识别（LLM 解码） | **正在用**（`config.yaml`：`asr_model: fun-asr-nano`） |
-| SenseVoice-Small | 识别（更快、中文 CER 略好） | 代码已认 `sensevoice`，**默认没开** |
+| Fun-ASR-Nano | 识别（LLM 解码） | 仍可配 `asr_model: fun-asr-nano`，不作默认 |
+| SenseVoice-Small | 识别（更快、中文 CER 略好） | **默认**（`config.yaml`：`asr_model: sensevoice-small`） |
 | CosyVoice | 合成（克隆音色） | **不要接**；夏目音色已经在 SoVITS |
 
 所以：若「试试 AudioTTS」是想换一家识别，**不是新路线，是已经在用的那一家**；要更准，试 SenseVoice，不要试 CosyVoice / Chrome AudioTTS。
@@ -96,6 +96,6 @@ Fun-ASR-Nano 公开中文 CER 大约 8%，比 Whisper-small（二十多）好一
 
 - **「识别换路、合成仍 SoVITS」：可行。**
 - **「识别走 AudioTTS」：按该名字的公开产品，不可行。**
-- **「识别走 FunAudioLLM 里真正负责听的模型」：可行；Nano 已在用，下一步试 SenseVoice，而不是 TTS。**
+- **「识别走 FunAudioLLM 里真正负责听的模型」：可行；默认已是 SenseVoice-Small，不是 TTS。**
 
 P3-A 的 GPT-SoVITS 约束保持不变。

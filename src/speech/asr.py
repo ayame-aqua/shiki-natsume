@@ -1,4 +1,7 @@
-"""ASR：中文优先 SenseVoice-Small；没有 FunASR 时退回 Faster-Whisper。"""
+"""P3-B ASR：默认 SenseVoice-Small + fsmn-vad；失败再 Faster-Whisper small。
+
+Fun-ASR-Nano 仍可通过 asr_model 打开，但不作默认：短句容易编词，forced_align 还硬依赖 torchaudio。
+"""
 
 from __future__ import annotations
 
@@ -6,6 +9,7 @@ import asyncio
 import logging
 import re
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path
 
 from src.speech.constants import (
@@ -19,8 +23,12 @@ from src.speech.constants import (
     ASR_NO_SPEECH_MAX,
     ASR_WAV_RATE,
     DEFAULT_ASR_MODEL,
+    FUNASR_NANO_BACKEND,
     FUNASR_NANO_ID,
+    SENSEVOICE_BACKEND,
+    SENSEVOICE_BATCH_SIZE_S,
     SENSEVOICE_LANGUAGE,
+    SENSEVOICE_MERGE_LENGTH_S,
     SENSEVOICE_MODEL_ID,
     SENSEVOICE_VAD_MAX_MS,
     SENSEVOICE_VAD_MODEL,
@@ -31,6 +39,8 @@ from src.speech.debug_log import speech_debug
 logger = logging.getLogger(__name__)
 
 _SENSEVOICE_TAG = re.compile(r"<\|[^|]*\|>")
+_NANO_TOKENS = ("nano", "fun-asr", "funasr")
+_WHISPER_SIZES = ("tiny", "base", "small", "medium", "large-v2", "large-v3", "large")
 
 _MIME_SUFFIX = {
     "audio/webm": ".webm",
@@ -46,11 +56,20 @@ class AsrError(Exception):
     """转写失败。调用方按没听清处理，不得写记忆。"""
 
 
-class FunasrAsr:
-    """FaustBot 同路：Fun-ASR-Nano + fsmn-vad。"""
+@dataclass(frozen=True)
+class FunasrSpec:
+    """同一套 FunASR 加载路径，不同权重。"""
 
-    def __init__(self, model_id: str = FUNASR_NANO_ID) -> None:
-        self._model_id = model_id
+    model_id: str
+    backend: str
+    trust_remote_code: bool
+
+
+class FunasrAsr:
+    """SenseVoice / Fun-ASR-Nano 共用：16 kHz wav + fsmn-vad。"""
+
+    def __init__(self, spec: FunasrSpec) -> None:
+        self._spec = spec
         self._model: object | None = None
 
     async def transcribe(self, audio_bytes: bytes, mime: str) -> str:
@@ -79,17 +98,24 @@ class FunasrAsr:
             msg = "funasr is not installed"
             raise AsrError(msg) from exc
         device = _torch_device()
-        logger.info("asr loading model=%s device=%s", self._model_id, device)
-        speech_debug("asr_load", backend="funasr", model=self._model_id, device=device)
+        logger.info("asr loading model=%s device=%s", self._spec.model_id, device)
+        speech_debug(
+            "asr_load",
+            backend=self._spec.backend,
+            model=self._spec.model_id,
+            device=device,
+        )
+        kwargs: dict[str, object] = {
+            "model": self._spec.model_id,
+            "vad_model": SENSEVOICE_VAD_MODEL,
+            "vad_kwargs": {"max_single_segment_time": SENSEVOICE_VAD_MAX_MS},
+            "device": device,
+            "disable_update": True,
+        }
+        if self._spec.trust_remote_code:
+            kwargs["trust_remote_code"] = True
         try:
-            self._model = AutoModel(
-                model=self._model_id,
-                trust_remote_code=True,
-                vad_model=SENSEVOICE_VAD_MODEL,
-                vad_kwargs={"max_single_segment_time": SENSEVOICE_VAD_MAX_MS},
-                device=device,
-                disable_update=True,
-            )
+            self._model = AutoModel(**kwargs)
         except Exception as exc:
             msg = "funasr load failed"
             raise AsrError(msg) from exc
@@ -101,21 +127,12 @@ class FunasrAsr:
             msg = "funasr missing generate"
             raise AsrError(msg)
         try:
-            try:
-                raw = generate(
-                    input=str(path),
-                    cache={},
-                    language=SENSEVOICE_LANGUAGE,
-                    use_itn=True,
-                    batch_size_s=60,
-                )
-            except TypeError:
-                raw = generate(input=str(path), cache={})
+            raw = _funasr_generate(generate, path)
         except Exception as exc:
             msg = "funasr infer failed"
             raise AsrError(msg) from exc
         text = _sensevoice_text(raw)
-        speech_debug("asr_text", backend="funasr", text=text)
+        speech_debug("asr_text", backend=self._spec.backend, text=text)
         return text
 
 
@@ -199,49 +216,77 @@ class FasterWhisperAsr:
 
 
 class FallbackAsr:
-    """先 Fun-ASR-Nano，装不上再 Faster-Whisper。"""
+    """先 SenseVoice（或配置的 FunASR），装不上 / 推理失败再 Faster-Whisper。"""
 
     def __init__(self, model_name: str = DEFAULT_ASR_MODEL) -> None:
-        self._primary: FunasrAsr | FasterWhisperAsr
-        if _wants_funasr(model_name):
-            model_id = FUNASR_NANO_ID
-            if "sensevoice" in (model_name or "").strip().lower():
-                model_id = SENSEVOICE_MODEL_ID
-            self._primary = FunasrAsr(model_id)
+        spec = resolve_funasr_spec(model_name)
+        if spec is not None:
+            self._primary: FunasrAsr | FasterWhisperAsr = FunasrAsr(spec)
             self._fallback: FasterWhisperAsr | None = FasterWhisperAsr(WHISPER_FALLBACK_SIZE)
         else:
             self._primary = FasterWhisperAsr(model_name)
             self._fallback = None
+        self._primary_failed = False
 
     async def transcribe(self, audio_bytes: bytes, mime: str) -> str:
+        if self._primary_failed:
+            if self._fallback is None:
+                msg = "asr primary already failed"
+                raise AsrError(msg)
+            return await self._fallback.transcribe(audio_bytes, mime)
         try:
             return await self._primary.transcribe(audio_bytes, mime)
         except AsrError:
             if self._fallback is None:
                 raise
+            self._primary_failed = True
             logger.exception("asr primary failed, falling back to whisper")
             speech_debug("asr_fallback", to="faster-whisper")
             return await self._fallback.transcribe(audio_bytes, mime)
 
     async def warmup(self) -> None:
-        """首句之前把权重读进显存。Fun-ASR-Nano 冷启动要几十秒，不能让用户等。"""
+        """首句之前把主力权重读进显存。SenseVoice 比 Nano 轻，仍不要压在第一句话上。"""
         try:
             await self._primary.warmup()
         except AsrError:
-            logger.exception("asr warmup failed model=%s", type(self._primary).__name__)
-            speech_debug("asr_warmup_fail", backend=type(self._primary).__name__)
+            self._primary_failed = True
+            logger.exception("asr warmup failed backend=%s", _backend_name(self._primary))
+            speech_debug("asr_warmup_fail", backend=_backend_name(self._primary))
 
 
 def build_asr(model_name: str = DEFAULT_ASR_MODEL) -> FallbackAsr:
     return FallbackAsr(model_name)
 
 
+def resolve_funasr_spec(model_name: str) -> FunasrSpec | None:
+    """配置名 → FunASR 规格。Whisper 尺寸返回 None。"""
+    raw = (model_name or DEFAULT_ASR_MODEL).strip().lower()
+    if raw.startswith(ASR_MODEL_PREFIX):
+        return None
+    if raw in _WHISPER_SIZES:
+        return None
+    if any(token in raw for token in _NANO_TOKENS):
+        return FunasrSpec(
+            model_id=FUNASR_NANO_ID,
+            backend=FUNASR_NANO_BACKEND,
+            trust_remote_code=True,
+        )
+    if "whisper" in raw:
+        return None
+    return FunasrSpec(
+        model_id=SENSEVOICE_MODEL_ID,
+        backend=SENSEVOICE_BACKEND,
+        trust_remote_code=False,
+    )
+
+
 def asr_model_size(name: str) -> str:
     raw = (name or "").strip().lower()
     if raw.startswith(ASR_MODEL_PREFIX):
         raw = raw[len(ASR_MODEL_PREFIX) :]
-    if _wants_funasr(raw):
-        if "sensevoice" in raw:
+    spec = resolve_funasr_spec(raw)
+    if spec is not None:
+        if spec.backend == SENSEVOICE_BACKEND:
             return "sensevoice-small"
         return "fun-asr-nano"
     return raw or WHISPER_FALLBACK_SIZE
@@ -251,6 +296,29 @@ def is_clear_transcript(text: str) -> bool:
     """只认中文。英文幻觉（如 T very social）当没听清。"""
     cjk = re.findall(r"[\u4e00-\u9fff]", text or "")
     return len(cjk) >= ASR_MIN_TEXT_CHARS
+
+
+def _funasr_generate(generate: object, path: Path) -> object:
+    """SenseVoice 吃 language/use_itn/merge_vad；Nano 的 generate 签名更窄，退一级。"""
+    try:
+        return generate(
+            input=str(path),
+            cache={},
+            language=SENSEVOICE_LANGUAGE,
+            use_itn=True,
+            batch_size_s=SENSEVOICE_BATCH_SIZE_S,
+            merge_vad=True,
+            merge_length_s=SENSEVOICE_MERGE_LENGTH_S,
+            ban_emo_unk=True,
+        )
+    except TypeError:
+        return generate(
+            input=str(path),
+            cache={},
+            language=SENSEVOICE_LANGUAGE,
+            use_itn=True,
+            batch_size_s=SENSEVOICE_BATCH_SIZE_S,
+        )
 
 
 def _ensure_wav(path: Path) -> Path:
@@ -306,11 +374,6 @@ def _suffix_for_mime(mime: str) -> str:
     return _MIME_SUFFIX.get(raw, ".webm")
 
 
-def _wants_funasr(name: str) -> bool:
-    raw = (name or "").strip().lower()
-    return any(token in raw for token in ("sensevoice", "funasr", "fun-asr", "nano", "paraformer"))
-
-
 def _sensevoice_text(raw: object) -> str:
     text = ""
     if isinstance(raw, list) and raw:
@@ -334,6 +397,13 @@ def _sensevoice_text(raw: object) -> str:
     except Exception:
         text = _SENSEVOICE_TAG.sub("", text)
     return " ".join(text.split()).strip()
+
+
+def _backend_name(asr: FunasrAsr | FasterWhisperAsr) -> str:
+    spec = getattr(asr, "_spec", None)
+    if isinstance(spec, FunasrSpec):
+        return spec.backend
+    return type(asr).__name__
 
 
 def _torch_device() -> str:
