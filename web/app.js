@@ -46,8 +46,10 @@ let audioContext = null;
 let playbackContext = null;
 let analyser = null;
 let sourceNode = null;
-let muteNode = null;
+let tapNode = null;
 let vadTimer = null;
+let micLabel = "";
+let zeroBandSince = 0;
 let mediaRecorder = null;
 let recordChunks = [];
 let sendAfterStop = false;
@@ -272,7 +274,8 @@ function publishVad(band) {
     const bar = "▮".repeat(Math.min(20, Math.round(band * 20)))
       + "▯".repeat(Math.max(0, 20 - Math.round(band * 20)));
     const state = snapshot.recording ? "采集中" : (voice ? "过线" : "安静");
-    vadMeterEl.textContent = `音量 ${percent(band)} ${bar} 底噪 ${percent(noiseFloor)} 峰值 ${percent(peakBand)} ${state}`;
+    const device = micLabel ? ` ${micLabel}` : "";
+    vadMeterEl.textContent = `音量 ${percent(band)} ${bar} 底噪 ${percent(noiseFloor)} 峰值 ${percent(peakBand)} ${state}${device}`;
   }
   const now = Date.now();
   if (now - lastVadReportAt < VAD_REPORT_MS) {
@@ -321,9 +324,9 @@ function closeAudioGraph() {
     sourceNode.disconnect();
     sourceNode = null;
   }
-  if (muteNode) {
-    muteNode.disconnect();
-    muteNode = null;
+  if (tapNode) {
+    tapNode.disconnect();
+    tapNode = null;
   }
   analyser = null;
   if (audioContext) {
@@ -398,6 +401,20 @@ function hasUtterance() {
   return voicedMs >= VAD_MIN_SPEECH_MS || isVoiceOn(peakBand);
 }
 
+function warnIfSilent(band) {
+  const now = Date.now();
+  if (band > 0.001) {
+    zeroBandSince = 0;
+    return;
+  }
+  if (!zeroBandSince) {
+    zeroBandSince = now;
+  }
+  if (now - zeroBandSince >= 4000) {
+    setStatus("麦克风音量一直是 0，换输入设备或检查浏览器权限");
+  }
+}
+
 function vadTick() {
   if (!liveMode || !analyser) {
     return;
@@ -407,6 +424,7 @@ function vadTick() {
   }
   const band = currentBand();
   publishVad(band);
+  warnIfSilent(band);
   if (busy || isSpeaking()) {
     if (isRecording()) {
       cancelUtterance();
@@ -464,9 +482,10 @@ async function startLive() {
   try {
     liveStream = await navigator.mediaDevices.getUserMedia({
       audio: {
-        echoCancellation: true,
+        echoCancellation: false,
         noiseSuppression: false,
         autoGainControl: true,
+        channelCount: 1,
       },
     });
   } catch {
@@ -479,7 +498,12 @@ async function startLive() {
     setStatus("这个浏览器不能实时听");
     return;
   }
-  audioContext = new Context();
+  const track = liveStream.getAudioTracks()[0];
+  micLabel = (track && track.label) || "麦克风";
+  const rate = track && track.getSettings ? track.getSettings().sampleRate : 0;
+  audioContext = typeof rate === "number" && rate > 0
+    ? new Context({ sampleRate: rate })
+    : new Context();
   if (audioContext.state === "suspended") {
     await audioContext.resume();
   }
@@ -487,15 +511,17 @@ async function startLive() {
   sourceNode = audioContext.createMediaStreamSource(liveStream);
   analyser = audioContext.createAnalyser();
   analyser.fftSize = ANALYSER_FFT_SIZE;
-  analyser.smoothingTimeConstant = 0.35;
-  // Chrome 上 Analyser 不接到 destination 时 getByteFrequencyData 经常全 0。
-  muteNode = audioContext.createGain();
-  muteNode.gain.value = 0;
+  analyser.smoothingTimeConstant = 0.2;
+  analyser.minDecibels = -90;
+  analyser.maxDecibels = -25;
+  // 接到隐藏的 MediaStreamDestination，不要回灌扬声器。
+  // 回灌 + echoCancellation 会把输入整段抵消，音量条就会一直是 0。
+  tapNode = audioContext.createMediaStreamDestination();
   sourceNode.connect(analyser);
-  analyser.connect(muteNode);
-  muteNode.connect(audioContext.destination);
+  analyser.connect(tapNode);
   liveMode = true;
   noiseFloor = VAD_FLOOR_MIN;
+  zeroBandSince = 0;
   resetVadClock();
   vadTimer = window.setInterval(vadTick, VAD_POLL_MS);
   beginUtterance();
@@ -510,6 +536,8 @@ function stopLive() {
   }
   closeAudioGraph();
   stopTracks();
+  micLabel = "";
+  zeroBandSince = 0;
   resetVadClock();
   if (vadMeterEl) {
     vadMeterEl.hidden = true;
