@@ -55,3 +55,4 @@
 | [v0.49](./v0.49.md) | Fun-ASR-Nano；TTS 用实时 AudioContext 播，避免被浏览器拦 |
 | [v0.50](./v0.50.md) | 补 torchaudio：Fun-ASR-Nano 不再每次退回 whisper；启动预热 |
 | [v0.51](./v0.51.md) | 开口即采：短句不再等 500ms 过线才录音 |
+| [v0.52](./v0.52.md) | AudioTTS 作识别不可行；听和说仍拆开，SoVITS 不动 |
