@@ -5,7 +5,7 @@
 | 日期 | 2026-09-20 |
 | 相关阶段 | [P3 方案](./方案.md) P3-B（听）/ P3-A（说） |
 | 问题 | 现在识别你的声音很不准；想把 **识别** 换成 AudioTTS；**她说话仍走 GPT-SoVITS** |
-| 结论 | **听和说拆开这条路线可行，而且仓库已经是这样拆的。** 名为 AudioTTS 的公开产品是 **文字转语音下载器，不能识别人声**，不能当 ASR 换上去。若你指的是 **FunAudioLLM** 这一家：识别侧默认已换同栈的 **SenseVoice-Small**；Fun-ASR-Nano 仍可配。不要换 CosyVoice / AudioTTS。 |
+| 结论 | **听和说拆开这条路线可行，而且仓库已经是这样拆的。** 名为 AudioTTS 的公开产品是 **文字转语音下载器，不能识别人声**，不能当 ASR 换上去。识别默认已是 **孔子 4（Confucius4-R2T2）**；失败退 SenseVoice-Small。不要换 CosyVoice / AudioTTS。 |
 
 ---
 
@@ -16,8 +16,9 @@
 | 识别换引擎，她出声仍用 GPT-SoVITS | **可行** | `transcribe()` 和 `synthesize()` 已经分开；P3-A 只打 `9880` |
 | 用网上的 **AudioTTS**（Chrome 扩展）听你说话 | **不可行** | 那是网页 **TTS 下载**，没有语音转文字接口 |
 | 用 **FunAudioLLM 的 CosyVoice** 听你说话 | **不可行** | CosyVoice 是 **合成**，不是识别；还会和夏目 SoVITS 抢「谁出声」 |
-| 用 **FunAudioLLM 的 SenseVoice** 听你说话，SoVITS 不动 | **可行，建议先试** | 同一套 FunASR 加载路径；`asr_model: sensevoice-small` |
-| 继续用 Fun-ASR-Nano，只换 AudioTTS 当「更准的识别」 | **无效** | 当前主力已经是 `FunAudioLLM/Fun-ASR-Nano-2512` |
+| 用 **孔子 4（Confucius4-R2T2）** 听你说话，SoVITS 不动 | **可行，现默认** | `qwen-asr` transformers；`asr_model: confucius4` |
+| 用 **FunAudioLLM 的 SenseVoice** 听你说话，SoVITS 不动 | **可行，作回退** | 同一套 FunASR 加载路径；`asr_model: sensevoice-small` |
+| 继续用 Fun-ASR-Nano，只换 AudioTTS 当「更准的识别」 | **无效** | Nano 已不是默认；AudioTTS 也不是识别 |
 
 **她说话走 GPT-SoVITS 不变：这条约束成立，也不该动。**
 
@@ -50,10 +51,11 @@ FunAudioLLM 这一家容易口误成「Audio TTS」，因为它同时卖听和�
 | 组件 | 干什么 | 我们现在 |
 | --- | --- | --- |
 | Fun-ASR-Nano | 识别（LLM 解码） | 仍可配 `asr_model: fun-asr-nano`，不作默认 |
-| SenseVoice-Small | 识别（更快、中文 CER 略好） | **默认**（`config.yaml`：`asr_model: sensevoice-small`） |
+| Confucius4-R2T2 | 识别（约 2B，Qwen3-ASR 底座） | **默认**（`config.yaml`：`asr_model: confucius4`） |
+| SenseVoice-Small | 识别（更快、中文 CER 略好） | 孔子 4 失败时的回退 |
 | CosyVoice | 合成（克隆音色） | **不要接**；夏目音色已经在 SoVITS |
 
-所以：若「试试 AudioTTS」是想换一家识别，**不是新路线，是已经在用的那一家**；要更准，试 SenseVoice，不要试 CosyVoice / Chrome AudioTTS。
+所以：若「试试 AudioTTS」是想换一家识别，方向反了。听走孔子 4，失败退 SenseVoice，不要试 CosyVoice / Chrome AudioTTS。
 
 ---
 
@@ -75,8 +77,8 @@ Fun-ASR-Nano 公开中文 CER 大约 8%，比 Whisper-small（二十多）好一
 
 **可以做（本机、不挡 P3-A）：**
 
-1. 默认 ASR 改 **SenseVoice-Small**（`iic/SenseVoiceSmall`）。同一 FunASR + `fsmn-vad`，改 `config.yaml` 一行。公开数字上中文 CER 略优于 Nano，且更不容易「编一句」。
-2. 对同一段你的录音，用 `scripts/check_asr.py` 并排看 Nano vs SenseVoice vs Whisper，避免只靠聊天体感。
+1. 默认 ASR 已是 **孔子 4**（`netease-youdao/Confucius4-R2T2`）。走 `qwen-asr` transformers，不上 vLLM。失败粘住退 SenseVoice-Small。
+2. 对同一段你的录音，用 `scripts/check_asr.py` 并排看孔子 4 vs SenseVoice vs Whisper，避免只靠聊天体感。
 3. 仍不准再查切句：外放改耳机、把最短有效语音加长、确认没有 fallback。
 
 **可以以后做、现在不必：**
@@ -96,6 +98,6 @@ Fun-ASR-Nano 公开中文 CER 大约 8%，比 Whisper-small（二十多）好一
 
 - **「识别换路、合成仍 SoVITS」：可行。**
 - **「识别走 AudioTTS」：按该名字的公开产品，不可行。**
-- **「识别走 FunAudioLLM 里真正负责听的模型」：可行；默认已是 SenseVoice-Small，不是 TTS。**
+- **「识别走真 ASR、不是 TTS」：可行；默认已是孔子 4，失败退 SenseVoice，不是 CosyVoice。**
 
 P3-A 的 GPT-SoVITS 约束保持不变。

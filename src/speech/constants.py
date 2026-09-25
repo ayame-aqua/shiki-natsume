@@ -19,7 +19,12 @@ ERROR_BODY_MAX = 500
 SAD_FALLBACK_EMOTION = "neutral"
 PROMPTS_FILE = "prompts.json"
 
-DEFAULT_ASR_MODEL = "sensevoice-small"
+DEFAULT_ASR_MODEL = "confucius4"
+# 网易有道 Confucius4-R2T2。代码 Apache-2.0，权重走网易模型使用许可，不进 git。
+CONFUCIUS4_MODEL_ID = "netease-youdao/Confucius4-R2T2"
+CONFUCIUS4_BACKEND = "confucius4"
+CONFUCIUS4_LANGUAGE = "Chinese"
+CONFUCIUS4_MAX_NEW_TOKENS = 256
 SENSEVOICE_MODEL_ID = "iic/SenseVoiceSmall"
 FUNASR_NANO_ID = "FunAudioLLM/Fun-ASR-Nano-2512"
 SENSEVOICE_LANGUAGE = "zh"

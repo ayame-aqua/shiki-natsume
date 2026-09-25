@@ -58,3 +58,4 @@
 | [v0.52](./v0.52.md) | AudioTTS 作识别不可行；听和说仍拆开，SoVITS 不动 |
 | [v0.53](./v0.53.md) | 默认 ASR 改 SenseVoice-Small；Nano 可配，失败粘住回退 Whisper |
 | [v0.54](./v0.54.md) | 采集不再回灌扬声器，音量条不再一直为 0 |
+| [v0.55](./v0.55.md) | 默认 ASR 改孔子 4（Confucius4-R2T2）；失败退 SenseVoice |

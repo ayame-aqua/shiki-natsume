@@ -1,6 +1,6 @@
-"""P3-B ASR：默认 SenseVoice-Small + fsmn-vad；失败再 Faster-Whisper small。
+"""P3-B ASR：默认 Confucius4-R2T2（qwen-asr / transformers）；失败再 SenseVoice-Small。
 
-Fun-ASR-Nano 仍可通过 asr_model 打开，但不作默认：短句容易编词，forced_align 还硬依赖 torchaudio。
+Fun-ASR-Nano 仍可配。不上 vLLM。权重走 HuggingFace 缓存，不进 git。
 """
 
 from __future__ import annotations
@@ -22,6 +22,10 @@ from src.speech.constants import (
     ASR_MODEL_PREFIX,
     ASR_NO_SPEECH_MAX,
     ASR_WAV_RATE,
+    CONFUCIUS4_BACKEND,
+    CONFUCIUS4_LANGUAGE,
+    CONFUCIUS4_MAX_NEW_TOKENS,
+    CONFUCIUS4_MODEL_ID,
     DEFAULT_ASR_MODEL,
     FUNASR_NANO_BACKEND,
     FUNASR_NANO_ID,
@@ -39,6 +43,7 @@ from src.speech.debug_log import speech_debug
 logger = logging.getLogger(__name__)
 
 _SENSEVOICE_TAG = re.compile(r"<\|[^|]*\|>")
+_CONFUCIUS_TOKENS = ("confucius", "r2t2", "孔子")
 _NANO_TOKENS = ("nano", "fun-asr", "funasr")
 _WHISPER_SIZES = ("tiny", "base", "small", "medium", "large-v2", "large-v3", "large")
 
@@ -63,6 +68,71 @@ class FunasrSpec:
     model_id: str
     backend: str
     trust_remote_code: bool
+
+
+class Confucius4Asr:
+    """网易有道 Confucius4-R2T2。整段转写走 qwen-asr 的 transformers 后端，不上 vLLM。"""
+
+    def __init__(self, model_id: str = CONFUCIUS4_MODEL_ID) -> None:
+        self._model_id = model_id
+        self._model: object | None = None
+
+    async def transcribe(self, audio_bytes: bytes, mime: str) -> str:
+        path = _write_temp_audio(audio_bytes, mime)
+        if path is None:
+            return ""
+        wav_path: Path | None = None
+        try:
+            wav_path = await asyncio.to_thread(_ensure_wav, path)
+            model = await asyncio.to_thread(self._ensure_model)
+            return await asyncio.to_thread(self._transcribe_path, model, wav_path)
+        finally:
+            if wav_path is not None and wav_path != path:
+                wav_path.unlink(missing_ok=True)
+            path.unlink(missing_ok=True)
+
+    async def warmup(self) -> None:
+        await asyncio.to_thread(self._ensure_model)
+
+    def _ensure_model(self) -> object:
+        if self._model is not None:
+            return self._model
+        try:
+            import torch
+            from qwen_asr import Qwen3ASRModel
+        except ImportError as exc:
+            msg = "qwen-asr is not installed"
+            raise AsrError(msg) from exc
+        device = _torch_device()
+        dtype = torch.bfloat16 if device.startswith("cuda") else torch.float32
+        logger.info("asr loading model=%s device=%s", self._model_id, device)
+        speech_debug("asr_load", backend=CONFUCIUS4_BACKEND, model=self._model_id, device=device)
+        try:
+            self._model = Qwen3ASRModel.from_pretrained(
+                self._model_id,
+                dtype=dtype,
+                device_map=device,
+                max_inference_batch_size=1,
+                max_new_tokens=CONFUCIUS4_MAX_NEW_TOKENS,
+            )
+        except Exception as exc:
+            msg = "confucius4 load failed"
+            raise AsrError(msg) from exc
+        return self._model
+
+    def _transcribe_path(self, model: object, path: Path) -> str:
+        transcribe = getattr(model, "transcribe", None)
+        if transcribe is None:
+            msg = "confucius4 missing transcribe"
+            raise AsrError(msg)
+        try:
+            raw = transcribe(audio=str(path), language=CONFUCIUS4_LANGUAGE)
+        except Exception as exc:
+            msg = "confucius4 infer failed"
+            raise AsrError(msg) from exc
+        text = _confucius_text(raw)
+        speech_debug("asr_text", backend=CONFUCIUS4_BACKEND, text=text)
+        return text
 
 
 class FunasrAsr:
@@ -216,15 +286,30 @@ class FasterWhisperAsr:
 
 
 class FallbackAsr:
-    """先 SenseVoice（或配置的 FunASR），装不上 / 推理失败再 Faster-Whisper。"""
+    """默认孔子 4；装不上或推理失败再 SenseVoice。Whisper 只在显式点名时当主力。"""
 
     def __init__(self, model_name: str = DEFAULT_ASR_MODEL) -> None:
-        spec = resolve_funasr_spec(model_name)
-        if spec is not None:
-            self._primary: FunasrAsr | FasterWhisperAsr = FunasrAsr(spec)
-            self._fallback: FasterWhisperAsr | None = FasterWhisperAsr(WHISPER_FALLBACK_SIZE)
+        raw = (model_name or DEFAULT_ASR_MODEL).strip().lower()
+        kind = resolve_asr_kind(raw)
+        self._fallback: FunasrAsr | FasterWhisperAsr | None
+        if kind == CONFUCIUS4_BACKEND:
+            self._primary: Confucius4Asr | FunasrAsr | FasterWhisperAsr = Confucius4Asr()
+            self._fallback = FunasrAsr(
+                FunasrSpec(
+                    model_id=SENSEVOICE_MODEL_ID,
+                    backend=SENSEVOICE_BACKEND,
+                    trust_remote_code=False,
+                )
+            )
+        elif kind in {SENSEVOICE_BACKEND, FUNASR_NANO_BACKEND}:
+            spec = resolve_funasr_spec(raw)
+            if spec is None:
+                msg = f"asr funasr spec missing kind={kind}"
+                raise AsrError(msg)
+            self._primary = FunasrAsr(spec)
+            self._fallback = FasterWhisperAsr(WHISPER_FALLBACK_SIZE)
         else:
-            self._primary = FasterWhisperAsr(model_name)
+            self._primary = FasterWhisperAsr(raw)
             self._fallback = None
         self._primary_failed = False
 
@@ -240,12 +325,13 @@ class FallbackAsr:
             if self._fallback is None:
                 raise
             self._primary_failed = True
-            logger.exception("asr primary failed, falling back to whisper")
-            speech_debug("asr_fallback", to="faster-whisper")
+            to_name = _backend_name(self._fallback)
+            logger.exception("asr primary failed, falling back to %s", to_name)
+            speech_debug("asr_fallback", to=to_name)
             return await self._fallback.transcribe(audio_bytes, mime)
 
     async def warmup(self) -> None:
-        """首句之前把主力权重读进显存。SenseVoice 比 Nano 轻，仍不要压在第一句话上。"""
+        """首句之前把主力权重读进显存。孔子 4 约 2B，冷启动会拉 HuggingFace 缓存。"""
         try:
             await self._primary.warmup()
         except AsrError:
@@ -258,38 +344,54 @@ def build_asr(model_name: str = DEFAULT_ASR_MODEL) -> FallbackAsr:
     return FallbackAsr(model_name)
 
 
-def resolve_funasr_spec(model_name: str) -> FunasrSpec | None:
-    """配置名 → FunASR 规格。Whisper 尺寸返回 None。"""
+def resolve_asr_kind(model_name: str) -> str:
     raw = (model_name or DEFAULT_ASR_MODEL).strip().lower()
-    if raw.startswith(ASR_MODEL_PREFIX):
-        return None
-    if raw in _WHISPER_SIZES:
-        return None
+    if raw.startswith(ASR_MODEL_PREFIX) or raw in _WHISPER_SIZES or "whisper" in raw:
+        return "whisper"
+    if _wants_confucius(raw):
+        return CONFUCIUS4_BACKEND
     if any(token in raw for token in _NANO_TOKENS):
+        return FUNASR_NANO_BACKEND
+    if "sensevoice" in raw:
+        return SENSEVOICE_BACKEND
+    return CONFUCIUS4_BACKEND
+
+
+def resolve_funasr_spec(model_name: str) -> FunasrSpec | None:
+    """配置名 → FunASR 规格。孔子 4 / Whisper 返回 None。"""
+    kind = resolve_asr_kind(model_name)
+    if kind == FUNASR_NANO_BACKEND:
         return FunasrSpec(
             model_id=FUNASR_NANO_ID,
             backend=FUNASR_NANO_BACKEND,
             trust_remote_code=True,
         )
-    if "whisper" in raw:
-        return None
-    return FunasrSpec(
-        model_id=SENSEVOICE_MODEL_ID,
-        backend=SENSEVOICE_BACKEND,
-        trust_remote_code=False,
-    )
+    if kind == SENSEVOICE_BACKEND:
+        return FunasrSpec(
+            model_id=SENSEVOICE_MODEL_ID,
+            backend=SENSEVOICE_BACKEND,
+            trust_remote_code=False,
+        )
+    return None
 
 
 def asr_model_size(name: str) -> str:
-    raw = (name or "").strip().lower()
+    raw = (name or DEFAULT_ASR_MODEL).strip().lower()
     if raw.startswith(ASR_MODEL_PREFIX):
         raw = raw[len(ASR_MODEL_PREFIX) :]
-    spec = resolve_funasr_spec(raw)
-    if spec is not None:
-        if spec.backend == SENSEVOICE_BACKEND:
-            return "sensevoice-small"
+    kind = resolve_asr_kind(raw)
+    if kind == CONFUCIUS4_BACKEND:
+        return CONFUCIUS4_BACKEND
+    if kind == SENSEVOICE_BACKEND:
+        return "sensevoice-small"
+    if kind == FUNASR_NANO_BACKEND:
         return "fun-asr-nano"
     return raw or WHISPER_FALLBACK_SIZE
+
+
+def _wants_confucius(name: str) -> bool:
+    raw = (name or "").strip().lower()
+    return any(token in raw for token in _CONFUCIUS_TOKENS)
 
 
 def is_clear_transcript(text: str) -> bool:
@@ -374,6 +476,21 @@ def _suffix_for_mime(mime: str) -> str:
     return _MIME_SUFFIX.get(raw, ".webm")
 
 
+def _confucius_text(raw: object) -> str:
+    if isinstance(raw, list) and raw:
+        return _confucius_text(raw[0])
+    text = getattr(raw, "text", None)
+    if isinstance(text, str):
+        return " ".join(text.split()).strip()
+    if isinstance(raw, dict):
+        piece = raw.get("text")
+        if isinstance(piece, str):
+            return " ".join(piece.split()).strip()
+    if isinstance(raw, str):
+        return " ".join(raw.split()).strip()
+    return ""
+
+
 def _sensevoice_text(raw: object) -> str:
     text = ""
     if isinstance(raw, list) and raw:
@@ -399,10 +516,12 @@ def _sensevoice_text(raw: object) -> str:
     return " ".join(text.split()).strip()
 
 
-def _backend_name(asr: FunasrAsr | FasterWhisperAsr) -> str:
+def _backend_name(asr: Confucius4Asr | FunasrAsr | FasterWhisperAsr) -> str:
     spec = getattr(asr, "_spec", None)
     if isinstance(spec, FunasrSpec):
         return spec.backend
+    if isinstance(asr, Confucius4Asr):
+        return CONFUCIUS4_BACKEND
     return type(asr).__name__
 
 

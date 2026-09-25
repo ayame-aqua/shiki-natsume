@@ -6,11 +6,13 @@ import asyncio
 
 from src.speech.asr import (
     AsrError,
+    Confucius4Asr,
     FasterWhisperAsr,
     FunasrAsr,
     asr_model_size,
     build_asr,
     is_clear_transcript,
+    resolve_asr_kind,
     resolve_funasr_spec,
 )
 from src.speech.constants import FUNASR_NANO_ID, SENSEVOICE_MODEL_ID
@@ -22,9 +24,19 @@ def test_asr_model_size_strips_prefix() -> None:
     assert asr_model_size("sensevoice-small") == "sensevoice-small"
     assert asr_model_size("fun-asr-nano") == "fun-asr-nano"
     assert asr_model_size("funasr") == "fun-asr-nano"
+    assert asr_model_size("confucius4") == "confucius4"
+    assert asr_model_size("孔子4") == "confucius4"
 
 
-def test_resolve_funasr_spec_defaults_to_sensevoice() -> None:
+def test_resolve_asr_kind() -> None:
+    assert resolve_asr_kind("confucius4") == "confucius4"
+    assert resolve_asr_kind("r2t2") == "confucius4"
+    assert resolve_asr_kind("sensevoice-small") == "sensevoice"
+    assert resolve_asr_kind("fun-asr-nano") == "funasr-nano"
+    assert resolve_asr_kind("small") == "whisper"
+
+
+def test_resolve_funasr_spec_sensevoice_and_nano() -> None:
     spec = resolve_funasr_spec("sensevoice-small")
     assert spec is not None
     assert spec.model_id == SENSEVOICE_MODEL_ID
@@ -33,15 +45,22 @@ def test_resolve_funasr_spec_defaults_to_sensevoice() -> None:
     assert nano is not None
     assert nano.model_id == FUNASR_NANO_ID
     assert nano.trust_remote_code is True
+    assert resolve_funasr_spec("confucius4") is None
     assert resolve_funasr_spec("small") is None
 
 
-def test_build_asr_defaults_to_sensevoice() -> None:
+def test_build_asr_defaults_to_confucius4() -> None:
     asr = build_asr()
+    assert isinstance(asr._primary, Confucius4Asr)
+    assert isinstance(asr._fallback, FunasrAsr)
+    assert asr._fallback._spec.model_id == SENSEVOICE_MODEL_ID
+    assert asr._primary._model is None
+
+
+def test_build_asr_can_still_select_sensevoice() -> None:
+    asr = build_asr("sensevoice-small")
     assert isinstance(asr._primary, FunasrAsr)
     assert asr._primary._spec.model_id == SENSEVOICE_MODEL_ID
-    assert asr._fallback is not None
-    assert asr._primary._model is None
 
 
 def test_build_asr_can_still_select_nano() -> None:
@@ -51,7 +70,7 @@ def test_build_asr_can_still_select_nano() -> None:
 
 
 def test_fallback_sticks_after_primary_fail() -> None:
-    asr = build_asr("sensevoice-small")
+    asr = build_asr()
 
     class _Boom:
         async def transcribe(self, audio_bytes: bytes, mime: str) -> str:

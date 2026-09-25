@@ -29,6 +29,8 @@ speech = [
     "kaldi-native-fbank>=1.0.0",
     # Fun-ASR-Nano 的 forced_align 走 torchaudio，缺了会每次推理抛 ImportError 并退到 whisper。
     "torchaudio>=2.6.0",
+    # 孔子 4 / Qwen3-ASR 的 transformers 后端。不要装 qwen-asr[vllm]，会和本机 torch 抢轮子。
+    "qwen-asr>=0.0.6",
 ]
 
 [build-system]
