@@ -131,31 +131,15 @@ async function playAssistantAudioAsync(url) {
   const clearIfCurrent = (handle) => {
     if (currentAudio === handle) {
       currentAudio = null;
+      if (window.live2d && typeof window.live2d.stopLipSync === "function") {
+        window.live2d.stopLipSync();
+      }
     }
     if (!busy) {
       setStatus(listeningStatus());
     }
     syncComposer();
   };
-  const playCtx = await ensurePlaybackContext();
-  if (playCtx) {
-    try {
-      const response = await fetch(url);
-      const raw = await response.arrayBuffer();
-      const decoded = await playCtx.decodeAudioData(raw.slice(0));
-      const source = playCtx.createBufferSource();
-      source.buffer = decoded;
-      source.connect(playCtx.destination);
-      source.addEventListener("ended", () => clearIfCurrent(source));
-      currentAudio = source;
-      source.start();
-      setStatus("她在说话");
-      syncComposer();
-      return;
-    } catch {
-      stopCurrentAudio();
-    }
-  }
   const audio = new Audio(url);
   currentAudio = audio;
   audio.addEventListener("ended", () => clearIfCurrent(audio));
@@ -163,6 +147,9 @@ async function playAssistantAudioAsync(url) {
     await audio.play();
     setStatus("她在说话");
     syncComposer();
+    if (window.live2d && typeof window.live2d.startLipSync === "function") {
+      window.live2d.startLipSync(audio);
+    }
   } catch {
     setStatus("语音播放失败");
     clearIfCurrent(audio);
@@ -654,11 +641,17 @@ function connect() {
       if (text) {
         appendMessage("assistant", text);
       }
+      if (frame.emotion && window.live2d && typeof window.live2d.setEmotion === "function") {
+        window.live2d.setEmotion(frame.emotion);
+      }
       return;
     }
     if (frame.type === "assistant_audio") {
       if (typeof frame.url === "string" && frame.url) {
         playAssistantAudio(frame.url);
+      }
+      if (frame.emotion && window.live2d && typeof window.live2d.setEmotion === "function") {
+        window.live2d.setEmotion(frame.emotion);
       }
       return;
     }
@@ -695,3 +688,9 @@ fetch("/api/character")
 
 connect();
 syncComposer();
+
+if (window.live2d && typeof window.live2d.init === "function") {
+  window.live2d.init().catch((error) => {
+    console.error("Live2D init failed:", error);
+  });
+}

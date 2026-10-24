@@ -399,6 +399,9 @@ def create_app(config: dict[str, Any] | None = None) -> FastAPI:
 
     if WEB_DIR.is_dir():
         app.mount("/assets", StaticFiles(directory=WEB_DIR), name="assets")
+    live2d_dir = WEB_DIR / "live2d"
+    if live2d_dir.is_dir():
+        app.mount("/live2d", StaticFiles(directory=live2d_dir), name="live2d")
     return app
 
 
