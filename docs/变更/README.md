@@ -61,3 +61,4 @@
 | [v0.55](./v0.55.md) | 默认 ASR 改孔子 4（Confucius4-R2T2）；失败退 SenseVoice |
 | [v0.56](./v0.56.md) | P6 QQ 通道定为 DSH 官方 qqbot 只收发；大脑仍是四季夏目 |
 | [v0.57](./v0.57.md) | P4 Live2D 接线：占位、AudioContext 口型、真实 CDN；本机挂皮后再勾表情/口型 |
+| [v0.58](./v0.58.md) | 中英日三份 README：写清已接线与未做，不抄 Artemis 宣传 |

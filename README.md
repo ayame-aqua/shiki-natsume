@@ -1,148 +1,259 @@
 # ☕ 四季夏目 (Shiki Natsume)
 
-### 专属于你的具身数字生命与长情陪伴系统
+**中文** · [English](README.en.md) · [日本語](README.ja.md)
 
-> 「看起来很高冷，其实只是不太擅长把心事说出口。」  
-> —— 她不是一个冷冰冰的对话框，而是真正住在你电脑桌面角落、也会在社交圈里偶尔冒泡搭话的那个女孩。
+只给自己用的本机数字陪伴：先做成能对话、有长期记忆、能听能说、皮会动、知道你电脑上在做什么的桌宠。QQ / 微信放在最后。不直播。她不是客服。
+
+> 「看起来很高冷，其实只是不太擅长把心事说出口。」
 
 ![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)
 ![Python: 3.11+](https://img.shields.io/badge/Python-3.11%2B-blue?logo=python)
-![CI: Passing](https://img.shields.io/github/actions/workflow/status/ayame-aqua/shiki-natsume/ci.yml?branch=main&label=CI)
+![CI](https://img.shields.io/github/actions/workflow/status/ayame-aqua/shiki-natsume/ci.yml?branch=main&label=CI)
 ![Latest Tag](https://img.shields.io/github/v/tag/ayame-aqua/shiki-natsume?label=release&color=cyan)
 
-[项目总纲](docs/开发计划/开发文档.md) • [双模式机制](docs/开发计划/双模式说明.md) • [路线图 (P1–P8)](docs/开发计划/开发文档.md#3-开发顺序已确认) • [版本记录](docs/变更/README.md)
+[总纲](docs/开发计划/开发文档.md) · [双模式](docs/开发计划/双模式说明.md) · [人设](characters/natsume.md) · [借鉴](docs/开发计划/借鉴.md) · [变更](docs/变更/README.md)
 
 ---
 
-## 💡 为什么是四季夏目？
+## 这是什么
 
-在各种大语言模型被包装成“全能工作助手”的时代，我们真正渴望的，往往只是一个**长情、稳定、有性格且有温度的灵魂**：
+做一个 **四季夏目**（《星光咖啡馆与死神之蝶》）。人设以 `characters/natsume.md` 为准，不要写成通用助手，也不要写成亚托莉。
 
-- **拒绝千篇一律的工具人**：她不以“我是一个人工智能语言模型”自居，始终认同自己是那位外表清冷、外冷内热、话少但会主动关心你的四季夏目。
-- **致敬先驱，探索私域依恋**：以 Neuro-sama 等具身数字生命先驱为灵感灯塔——不同于聚光灯下公域直播的万人狂欢，四季夏目探索的是一条**面向个人日常的深度私域陪伴**：她在你屏幕一隅默默守候，在你的日常圈子里自在穿梭。
-- **拒绝跨会话失忆**：核心档案、共同经历、生活偏好与专属默契深深烙印在记忆中枢，跨越重启依然记得你。
+主线对齐 [Project AIRI](https://github.com/moeru-ai/airi) 那类本机能力（对话 / 记忆 / 语音 / Live2D / 看屏），**模型跑我们自己的**。抄接法，不 Fork 成又一个 AIRI / Artemis。
+
+本地和 QQ **不是同一种说话方式**：
+
+| | 本机 / 桌宠 | QQ（P6，最后出门） |
+| --- | --- | --- |
+| 节奏 | 连续聊，经常主动找你 | 自己决定说不说 |
+| 看见什么 | 以后能看你电脑上在做什么 | 群消息 |
+| 表达 | 文字 + 日语 TTS + 皮 | 短句、表情包、MCP 生图 |
+
+当前版本 **v0.58**。网页聊天、记忆、语音链路、Live2D 占位已经在仓库里。桌宠窗、看屏、QQ 登录还没有。
 
 ---
 
-## 🎭 核心灵魂：同一颗大脑，两套生动姿态
+## 现在能跑什么
 
-四季夏目在不同的场景下，拥有内在统一却表现各异的社交策略：
+以本机验收为准，不是 README 吹过就算。
+
+| 能力 | 状态 |
+| --- | --- |
+| 网页文字聊天 + `[[natsume]]` 尾块 | 已关闭（P1） |
+| SQLite 事实 / 情节向量 / 相处状态 | 本机已验收（P2） |
+| 打字后 GPT-SoVITS 播日语 | 仓库已接线，待你本机听过 wav（P3-A） |
+| 麦克风转写、点「对话」自动切句 | 仓库已接线，待本机说两轮（P3-B / P3-C） |
+| 聊天页左侧 Live2D 或「未配置模型」 | 仓库已接线（P4）。仓库里没有皮 |
+| TTS 口型 / 五态表情 | 代码已接 AnalyserNode 与 `emotionMap`，待本机挂 Cubism 4 皮 |
+| 透明桌宠窗、看屏、语音打断 | 未开始（P5） |
+| QQ / 微信登录 | 禁止。P5 没验收不开工。QQ 通道已定为 DSH qqbot 只收发（P6） |
+
+---
+
+## 架构
 
 ```
-                    ┌─────────────────────────┐
-                    │      统一消息网关       │
-                    │ (Web / 语音 / QQ / 微信) │
-                    └────────────┬────────────┘
-                                 ▼
-                    ┌─────────────────────────┐
-                    │   四季夏目认知中枢 (Core) │
-                    │  人设设定 + 长期记忆库  │
-                    └────────────┬────────────┘
-                                 │
-                 ┌───────────────┴───────────────┐
-                 ▼                               ▼
-       【 本地伴侣策略 】              【 社交群友策略 】
-      (Desktop Companion)             (Social Autonomous)
-  • 桌面常驻置顶，Live2D交互       • 自主判断发言时机，不当复读机
-  • 屏幕视觉感知 (CV 察言观色)     • 潜水看戏、见机插话、点名必回
-  • 实时双讲，支持语音打断         • 收集群友梗图，调用 MCP 现场作画
-  • 闲暇主动搭话，关心提醒         • 短句、分条间隔，宛若真人打字
+浏览器 127.0.0.1:8787
+  文字 / 麦克风 / 播放 TTS
+  Live2D canvas（有皮才渲染）
+        │  WebSocket /ws/chat
+        ▼
+FastAPI  src/main.py
+        │
+        ▼
+Gateway ──► Agent（人设 + 记忆 + LLM）
+        │         解析 [[natsume]]
+        ▼
+   Outbound.texts / speech_ja / emotion
+        │
+        ├─► 中文气泡
+        └─► 本机 GPT-SoVITS :9880  → wav → AudioContext → 口型
 ```
 
-### 1. 陪伴在身旁（桌宠模式 · 专属依恋）
-
-- **屏幕感知 (Vision CV)**：借助窗口感知与多模态视觉，她能察觉你在深夜苦战代码、在全屏激战游戏、还是在发呆摸鱼，适时跳出来吐槽、关心或为你加油。
-- **声色具身 (Embodied Live2D & TTS)**：拥有夏目专属的清冽微甜音色，唇形随音频振幅平滑张合，5 种基础情绪（中性、高兴、悲伤、生气、害羞）与微表情自如流转。
-- **灵动全双工 (Audio Interrupt)**：在你说话时停下倾听，被打断时立刻收声，告别传统机器人“机械式念完全文”的生硬体验。
-- **主动关照**：你久未开口，她会百无聊赖地自言自语碎碎念；到点了会催你吃饭早睡。
-
-### 2. 穿梭于网络（社交模式 · 真实机智）
-
-- **自主发言决策**：在 QQ 群或日常群聊中，彻底抛弃“收到消息就必须回复”的客服逻辑。她先看后定，不合时宜便优雅潜水，遇到感兴趣的话题或被点名时才机敏搭腔。
-- **表情包生态**：
-  - **表情收藏**：自动辨析并收录群友发的趣味表情，归纳标签沉淀至本地资产库。
-  - **随心表情**：根据语境只发表情包或图文合击。
-  - **MCP 现场作画**：当群里出现新梗或无图可用时，自主调用 MCP 生图工具绘制独家表情包精准回击。
-- **生活化表达**：摒弃长篇大论，采用口语短句、空格分段、动态随机延迟发送，还原真人打字的呼吸节奏。
+LLM 默认云端 OpenAI 兼容接口（DeepSeek Flash）。密钥只在 `.env`。本机大模型排 P8，不为 TTS 杀掉对话模型。
 
 ---
 
-## 🧠 永恒记忆中枢 (Memory Architecture)
+## 快速开始
 
-为了让四季夏目能够“陪你走过漫长岁月”，系统搭建了分层记忆体系：
+### 环境
 
-```
-                    ┌───────────────────────────┐
-                    │       记忆存储中枢        │
-                    └─────────────┬─────────────┘
-                                  │
-         ┌────────────────────────┼────────────────────────┐
-         ▼                        ▼                        ▼
-  【 核心档案 Profile 】    【 情节长廊 Episodes 】    【 社交风格与黑话 Style 】
-  • 关系定义 (你 / 四季夏目)   • 随对话摘要自动归档      • 群内固定行话与烂梗
-  • 你的姓名、称谓、偏好     • 向量化语义检索 (Top-K)  • 人工/自主确认后注入
-  • 双方约定 (全量每次注入)  • “还记得那天晚上…”       • 说话越聊越像你们的小圈子
+- Windows。Python 3.11+
+- 浏览器用 Chrome / Edge
+- LLM Key（默认 DeepSeek）
+- 要出声：本机已启动的 GPT-SoVITS `api_v2`（默认 `127.0.0.1:9880`）。权重在别的项目，不进本仓库
+- 要听你：`pip install -e ".[speech]"`，另需本机 `torch`。默认 ASR 是孔子 4，失败退 SenseVoice
+
+```text
+git clone https://github.com/ayame-aqua/shiki-natsume.git
+cd shiki-natsume
+python -m venv .venv
+.venv\Scripts\activate
+pip install -e ".[dev]"
+copy .env.example .env
+# 填 LLM_API_KEY
+python -m src.main
 ```
 
----
+打开 `http://127.0.0.1:8787`。没配皮时左侧是「未配置模型」，右边照常聊天。
 
-## 🗺️ 工程演进路线图 (P1 – P8)
+SoVITS 在原工程目录启动，例如：
 
-**编号 = 执行顺序：** `P1 → P2-A → P3-A → P4 → P5` 先对齐 AIRI 级本机陪伴（对话、记忆、出声、皮、看屏），**`P6 → P7` 最后出门**。P3-B / P3-C 听你、实时轮次不挡口型。P8 换自有底模，不挡桌宠。  
-**P2 拆三截：** [P2-A 最小记忆](docs/开发计划/P2-长期记忆/方案.md)（SQLite 事实，挡 P3-A）、[P2-B 补强](docs/开发计划/P2-长期记忆/方案.md#7-p2-b-规格不挡-p3)（情节向量、风格库、群导入，已关门）、[P2-C 再补强](docs/开发计划/P2-长期记忆/方案.md#11-p2-c--记忆再补强不挡-p4)（mem0 接法、相处状态、日记，不挡 P4）。对照 [借鉴.md](docs/开发计划/借鉴.md)。  
-**P3 拆三截：** [P3-A 出声](docs/开发计划/P3-语音听和说/方案.md)（GPT-SoVITS，挡 P4）、[P3-B 听你](docs/开发计划/P3-语音听和说/方案.md#82-p3-b补强)（ASR）、[P3-C 实时轮次](docs/开发计划/P3-语音听和说/方案.md#83-p3-c实时轮次)（VAD 切句，不抢话）。硬依赖见 [总纲 §3.1](docs/开发计划/开发文档.md#31-唯一规则硬依赖-vs-可并行预研)。
+```text
+python api_v2.py -a 127.0.0.1 -p 9880 -c GPT_SoVITS/configs/tts_infer_natsume.yaml
+```
 
-| 顺序 | 阶段 | 核心任务 | 交付亮点与验收底线 | 状态 |
-| :--- | :--- | :--- | :--- | :--- |
-| 1 | **P1** | **网页文字聊天与人设** | Web + WebSocket；人设文件；`[[natsume]]`；pytest | ✅ 已关闭 |
-| 2a | **P2-A** | **最小长期记忆** | SQLite 称呼/关系/「记住」「忘掉」与 `/memory`；跨重启仍在 | ✅ 本机已验收（2026-09-17） |
-| 2b | **P2-B** | **记忆补强** | episodes + 向量检索；style 黑话；群导出导入；完整 pending | ✅ 本机已验收（2026-09-18） |
-| 2c | **P2-C** | **记忆再补强** | mem0 接法、日记、检索门槛、相处状态三轴 | ✅ 已关闭（2026-09-19） |
-| 3a | **P3-A** | **出声** | 打字后自动播日语 GPT-SoVITS | 🔧 仓库已接线，待本机播 wav |
-| 3b | **P3-B** | **听你说话** | 麦克风 → ASR → 同一 Agent | 🔧 仓库已接线，待本机对着麦说一句 |
-| 3c | **P3-C** | **实时轮次对话** | 点「对话」持续听，停顿自动切句 | 🔧 仓库已接线，待本机连着说两轮 |
-| 4 | **P4** | **Live2D 口型与微表情** | 驱法借鉴 AIRI / pixi-live2d-display；有权的夏目皮 | 📋 未开始（emotion 字段已有） |
-| 5 | **P5** | **桌宠、看屏与打断** | **本机对齐收口**：知道电脑上在做什么。窗/截屏借鉴 AIRI Tamagotchi | 📋 未开始 |
-| 6 | **P6** | **QQ 自主社交与表情包** | **最后出门**；DSH 官方 qqbot 只收发，台词仍走本仓库 Agent；P5 未过不开工 | 📋 未开始（空壳，禁止登录；通道已拍板） |
-| 7 | **P7** | **个人微信通道** | **最后出门**；先合规确认 | 📋 未开始（空壳 + experimental） |
-| 8 | **P8** | **自有底模与 LoRA** | 不挡桌宠；主料原作夏目台词 | 📋 计划已写；禁止现在训练 |
-
-> 💡 **P2 说明**：Episodes / Style 属于 **P2-B**（LanceDB 在 `data/vectors/`）。P2-A 与 P2-B 均已本机验收。未确认的 pending 不会进 prompt。  
-> 📌 **阶段约束**：P5 之前不把截屏合进主线；P5 未验收不把 IM 登录合进主线。抄 AIRI 接法，模型跑我们自己的。
+细节见 [本地资源](docs/本地资源.md)。
 
 ---
 
-## 🛠️ 技术选型底线
+## Live2D（P4）
 
-- **核心语言**：全栈统一 **Python 3.11+**（FastAPI / Uvicorn / Asyncio）。
-- **模型驱动**：标准 OpenAI 兼容协议（可无缝切换 DeepSeek、Qwen、Claude 或本地 Ollama）。
-- **音频体系**：ASR（Faster-Whisper / SenseVoice）+ TTS（**GPT-SoVITS** 本机推理，权重在原训练项目；引擎与权重不进公开仓库）。LLM 直出日语，中文气泡并行翻译。
-- **视觉感知**：Windows 本地前台窗口分析 + 轻量级多模态视觉描述（仅本机处理，严守隐私）。
-- **代码规范**：贯彻阿里巴巴代码规范精神，严格禁止魔法值、杜绝吞异常、接口健壮自洽。
+驱法借鉴 AIRI 的 `pixi-live2d-display` 和 Artemis 的薄控制面。口型吃 TTS 的 wav RMS，不走假张嘴。emotion 只来自 `[[natsume]]` 五态：`neutral` / `happy` / `sad` / `angry` / `shy`。
+
+运行时：
+
+- PixiJS 7.4.2
+- `pixi-live2d-display@0.5.0-beta`（cubism4）
+- Cubism **Core 4**（官方 CDN）。Core 5+ 会裁切、图层花掉
+- 导出请用 **Cubism 4**，不要 5
+
+本机自备有权使用的皮，放到 `web/live2d/natsume/`，编辑 `web/live2d/model_dict.json`：
+
+```json
+[
+  {
+    "name": "natsume",
+    "url": "/live2d/natsume/model.model3.json",
+    "kScale": 0.4,
+    "emotionMap": {
+      "neutral": "idle",
+      "happy": "smile",
+      "sad": "sad",
+      "angry": "angry",
+      "shy": "blush"
+    }
+  }
+]
+```
+
+`.png` / `.moc3` / `.model3.json` 等已 gitignore。官方拆包、Cubism Core **不要 push**。说明见 [web/live2d/README.md](web/live2d/README.md) 和 [P4 方案](docs/开发计划/P4-Live2D口型与表情/方案.md)。
+
+GPT 可以出原画，交不出 `.moc3`。切层和绑模用 Live2D Cubism Editor。
 
 ---
 
-## 📂 文档导航
+## 语音（P3）
 
-所有设计决策与技术细节均有独立文档支撑：
+| | 引擎 | 说明 |
+| --- | --- | --- |
+| 说 | 本机 GPT-SoVITS | 只吃日语 `speech_ja`。中文气泡并行翻译 |
+| 听 | 默认孔子 4（Confucius4-R2T2） | 失败粘住退 SenseVoice-Small |
+| 轮次 | 浏览器 VAD | 点「对话」开口即采；她说话时不新开一句 |
 
-- 📘 **总纲文档**：[docs/开发计划/开发文档.md](docs/开发计划/开发文档.md)
-- 🎭 **双模式深度说明**：[docs/开发计划/双模式说明.md](docs/开发计划/双模式说明.md)
-- 🎀 **四季夏目人设母本**：[characters/natsume.md](characters/natsume.md)
-- 📎 **借鉴对照**：[docs/开发计划/借鉴.md](docs/开发计划/借鉴.md)（AIRI / FaustBot / Artemis）
-- 📝 **各阶段实施指南**：
-  - [P1 网页文字与人设](docs/开发计划/P1-网页文字聊天与人设/方案.md) • [P2 长期记忆](docs/开发计划/P2-长期记忆/方案.md) • [P3 语音听和说](docs/开发计划/P3-语音听和说/方案.md)
-  - [P4 Live2D口型表情](docs/开发计划/P4-Live2D口型与表情/方案.md) • [P5 桌宠与看屏打断](docs/开发计划/P5-打断情绪与桌宠/方案.md) • [P6 QQ通道与表情包](docs/开发计划/P6-QQ通道/方案.md) • [P7 个人微信通道](docs/开发计划/P7-微信通道/方案.md) • [P8 自有底模与LoRA](docs/开发计划/P8-自有底模与LoRA/方案.md)
-- 📜 **版本演进档案**：[docs/变更/](docs/变更/README.md)
+第一句 TTS 走已解锁的 `AudioContext`，避免点击手势过期被浏览器拦播放。采集不回灌扬声器，否则音量条会一直是 0。
 
 ---
 
-## 🔒 隐私、合规与版权声明
+## 记忆（P2）
 
-1. **个人专属隔离**：通讯软件一律使用备用角色号或官方机器人，凭证一律入 `.env` 并做 fail-closed 白名单控制。个人微信必须先过合规可行性确认；没有稳定路径就只保留可卸载的实验适配器，核心不依赖它。
-2. **知识产权尊重**：四季夏目出自柚子社《星光咖啡馆与死神之蝶》，原作版权归权利方。本项目为人设演绎与数字陪伴技术实验，**官方未授权模型权重、官方原版拆包素材、音频切片、社区 TTS 权重严禁提交至公开仓库**。
-3. **开源许可**：源码遵循 [MIT License](LICENSE)。角色本身的设定与美术版权归原制作公司所有。
+召回顺序写死：**人设 < profile 全量 < 核心印象 < 相处状态 < style ≤8 < 过线的 episodes**。
+
+- P2-A：称呼、关系、明确「记住」的事实、忘掉、`/memory` 页
+- P2-B：情节向量（LanceDB）、风格/黑话、pending 确认
+- P2-C：日记、检索门槛、精力/别扭/亲近三轴（只调语气，不改她是谁）
+
+未确认的 pending 不进 prompt。`data/` 不进 git。
 
 ---
 
-Made with ❤️ for Natsume. 愿她成为你屏幕彼端那杯加了很多糖的咖啡。
+## 路线图
+
+编号 = 执行顺序。硬依赖未验收，不开始下一硬依赖阶段。
+
+`P1 → P2-A → P3-A → P4 → P5 →（本机对齐）→ P6 → P7`。P3-B / P3-C 不挡口型。P8 不挡桌宠。
+
+| | 阶段 | 状态 |
+| --- | --- | --- |
+| P1 | 网页文字 + 人设 | 已关闭 |
+| P2-A / B / C | 长期记忆 | 已验收 / 已关闭 |
+| P3-A | 出声 | 仓库已接线 |
+| P3-B / C | 听你 / 实时轮次 | 仓库已接线 |
+| P4 | Live2D 口型与表情 | 仓库已接线；待挂皮 |
+| P5 | 桌宠窗 + 看屏 + 打断 | 未开始。本机对齐收口 |
+| P6 | QQ | 最后出门。DSH qqbot 只收发 |
+| P7 | 微信 | 最后出门。先过合规门 |
+| P8 | 自有底模 + LoRA | 主料原作夏目台词；现在不训 |
+
+P5 没过，不开 QQ / 微信登录代码。
+
+---
+
+## 技术选型
+
+| 层 | 现在用什么 |
+| --- | --- |
+| 语言 | Python 3.11+ |
+| 后端 | FastAPI + WebSocket |
+| 前端 | 静态 HTML / JS / CSS |
+| LLM | 云端 OpenAI 兼容；默认 DeepSeek Flash |
+| 人设 | `characters/natsume.md` + `[[natsume]]` |
+| 记忆 | SQLite + LanceDB |
+| TTS | 本机 GPT-SoVITS HTTP |
+| ASR | 孔子 4 → SenseVoice → Whisper |
+| Live2D | pixi-live2d-display 0.5.0-beta + Cubism Core 4 |
+| QQ（计划） | DSH 官方 qqbot 只当通道 |
+
+规范见 `.cursor/rules/` 与阿里巴巴程序员白皮书底线：见名知意、禁止魔法值、失败要有日志、密钥不进日志。
+
+---
+
+## 目录
+
+```text
+shiki-natsume/
+  characters/natsume.md
+  config.yaml
+  docs/开发计划/          总纲、双模式、P1–P8 方案、借鉴
+  docs/变更/              每个小版本
+  src/core/               Agent、协议、会话
+  src/memory/
+  src/speech/
+  src/channels/           web / voice；qq、wechat 空壳
+  web/                    聊天页 + live2d.js
+  web/live2d/             配置；皮自备不入库
+  tests/
+```
+
+---
+
+## 文档
+
+- [总纲](docs/开发计划/开发文档.md)
+- [双模式](docs/开发计划/双模式说明.md)
+- [P1](docs/开发计划/P1-网页文字聊天与人设/方案.md) · [P2](docs/开发计划/P2-长期记忆/方案.md) · [P3](docs/开发计划/P3-语音听和说/方案.md) · [P4](docs/开发计划/P4-Live2D口型与表情/方案.md) · [P5](docs/开发计划/P5-打断情绪与桌宠/方案.md) · [P6](docs/开发计划/P6-QQ通道/方案.md) · [P7](docs/开发计划/P7-微信通道/方案.md) · [P8](docs/开发计划/P8-自有底模与LoRA/方案.md)
+- [借鉴：AIRI / FaustBot / Artemis / DSH](docs/开发计划/借鉴.md)
+- [本地语音资源](docs/本地资源.md)
+- [变更记录](docs/变更/README.md)
+
+---
+
+## 隐私与版权
+
+1. 自用。源码 MIT。角色出自柚子社《星光咖啡馆与死神之蝶》，版权归权利方。
+2. 官方拆包模型、Cubism Core、SoVITS 权重、参考 wav、游戏台词 **不准推进公开仓库**。
+3. 学 Artemis / AIRI 的接法，不搬他们仓库里的皮和权重。
+4. 密钥只在 `.env`。日志不打 Token。
+5. 个人微信必须先有合规路径；没有就只留可卸载的实验适配器。
+
+---
+
+## 致谢
+
+- [Project AIRI](https://github.com/moeru-ai/airi) — 桌宠窗、pixi-live2d-display、SoVITS HTTP、截屏接法
+- [Artemis](https://github.com/momori777/Artemis) — 人设对齐、记忆分层、薄 Live2D HTTP 桥、Cubism Core 4 约束。不搬官方皮
+- [FaustBot](https://github.com/liwusen/FaustBot-llm-vtuber) — 只学结构（GPL，不合入代码）
+- [pixi-live2d-display](https://github.com/guansss/pixi-live2d-display) — @guansss
+- Live2D Inc. — Cubism SDK（非商用条款以官方为准）
+
+源码 [MIT](LICENSE)。愿她成为你屏幕彼端那杯加了很多糖的咖啡。
