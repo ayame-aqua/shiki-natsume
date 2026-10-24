@@ -87,9 +87,9 @@ Agent 会输出以下 5 种基础情绪：
 
 ### 表情不切换
 
-1. 检查 `emotionMap` 中的 motion 名称是否与模型文件中的一致
-2. 查看浏览器控制台是否有"Emotion motion not found"警告
-3. 确认模型的 `.model3.json` 中定义了对应的 motion 组
+1. 检查 `emotionMap` 的值是否对上模型的 expression 或 motion 组名
+2. 查看浏览器控制台是否有 "Emotion mapping missing" 警告
+3. 确认 `.model3.json` 里有对应的 Expressions 或 Motions
 
 ### 口型不动
 
@@ -99,7 +99,8 @@ Agent 会输出以下 5 种基础情绪：
 
 ## 技术细节
 
-- 前端库：pixi.js@7.4.2 + pixi-live2d-display@1.2.0
-- 驱动方式：RMS 振幅分析（AnalyserNode）
+- 前端库：pixi.js@7.4.2 + pixi-live2d-display@0.5.0-beta（`cubism4`）
+- Cubism Core：官方 CDN `live2dcubismcore.min.js`，不入库
+- 驱动方式：播放链路里的 AnalyserNode 时域 RMS
 - 平滑系数：0.35（可在 `web/live2d.js` 中调整）
 - 口型参数：`ParamMouthOpenY`（标准 Cubism 参数）

@@ -5,13 +5,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>四季夏目</title>
     <link rel="stylesheet" href="/assets/style.css" />
+    <script src="https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/pixi.js@7.4.2/dist/pixi.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/pixi-live2d-display@1.2.0/dist/index.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/pixi-live2d-display@0.5.0-beta/dist/cubism4.min.js"></script>
   </head>
   <body>
     <div class="container">
       <div id="live2d-container" class="live2d-container">
-        <canvas id="live2d-canvas"></canvas>
+        <canvas id="live2d-canvas" hidden></canvas>
+        <div id="live2d-placeholder" class="live2d-placeholder">未配置模型</div>
       </div>
       <main class="app">
         <header class="brand">

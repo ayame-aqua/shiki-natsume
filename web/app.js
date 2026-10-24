@@ -36,6 +36,7 @@ const VAD_FLOOR_EMA = 0.1;
 const VAD_FLOOR_MIN = 0.008;
 const VAD_REPORT_MS = 200;
 const ANALYSER_FFT_SIZE = 2048;
+const LIP_SYNC_FFT_SIZE = 256;
 
 let socket = null;
 let busy = false;
@@ -122,24 +123,55 @@ async function ensurePlaybackContext() {
   return playbackContext;
 }
 
+function callLive2d(methodName, ...args) {
+  const api = window.live2d;
+  if (!api || typeof api[methodName] !== "function") {
+    return;
+  }
+  api[methodName](...args);
+}
+
 function playAssistantAudio(url) {
   void playAssistantAudioAsync(url);
 }
 
 async function playAssistantAudioAsync(url) {
   stopCurrentAudio();
+  callLive2d("stopLipSync");
   const clearIfCurrent = (handle) => {
     if (currentAudio === handle) {
       currentAudio = null;
-      if (window.live2d && typeof window.live2d.stopLipSync === "function") {
-        window.live2d.stopLipSync();
-      }
+      callLive2d("stopLipSync");
+      callLive2d("releaseEmotion");
     }
     if (!busy) {
       setStatus(listeningStatus());
     }
     syncComposer();
   };
+  const playCtx = await ensurePlaybackContext();
+  if (playCtx) {
+    try {
+      const response = await fetch(url);
+      const raw = await response.arrayBuffer();
+      const decoded = await playCtx.decodeAudioData(raw.slice(0));
+      const source = playCtx.createBufferSource();
+      const mouthAnalyser = playCtx.createAnalyser();
+      mouthAnalyser.fftSize = LIP_SYNC_FFT_SIZE;
+      source.buffer = decoded;
+      source.connect(mouthAnalyser);
+      mouthAnalyser.connect(playCtx.destination);
+      source.addEventListener("ended", () => clearIfCurrent(source));
+      currentAudio = source;
+      source.start();
+      callLive2d("startLipSync", mouthAnalyser);
+      setStatus("她在说话");
+      syncComposer();
+      return;
+    } catch {
+      stopCurrentAudio();
+    }
+  }
   const audio = new Audio(url);
   currentAudio = audio;
   audio.addEventListener("ended", () => clearIfCurrent(audio));
@@ -147,9 +179,6 @@ async function playAssistantAudioAsync(url) {
     await audio.play();
     setStatus("她在说话");
     syncComposer();
-    if (window.live2d && typeof window.live2d.startLipSync === "function") {
-      window.live2d.startLipSync(audio);
-    }
   } catch {
     setStatus("语音播放失败");
     clearIfCurrent(audio);
@@ -621,6 +650,7 @@ function connect() {
         busy = false;
         if (!isSpeaking()) {
           setStatus(listeningStatus());
+          callLive2d("releaseEmotion");
         }
         syncComposer();
       }
@@ -641,17 +671,14 @@ function connect() {
       if (text) {
         appendMessage("assistant", text);
       }
-      if (frame.emotion && window.live2d && typeof window.live2d.setEmotion === "function") {
-        window.live2d.setEmotion(frame.emotion);
+      if (frame.emotion) {
+        callLive2d("setEmotion", frame.emotion);
       }
       return;
     }
     if (frame.type === "assistant_audio") {
       if (typeof frame.url === "string" && frame.url) {
         playAssistantAudio(frame.url);
-      }
-      if (frame.emotion && window.live2d && typeof window.live2d.setEmotion === "function") {
-        window.live2d.setEmotion(frame.emotion);
       }
       return;
     }
