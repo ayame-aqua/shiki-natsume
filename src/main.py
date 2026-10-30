@@ -389,8 +389,9 @@ def create_app(config: dict[str, Any] | None = None) -> FastAPI:
     @app.post("/api/proactive/trigger")
     async def trigger_proactive() -> dict[str, Any]:
         """手动触发主动搭话（供桌宠定时器调用）。"""
-        from src.core.policy.local import generate_proactive_prompt
         from uuid import uuid4
+
+        from src.core.policy.local import generate_proactive_prompt
 
         proactive_cfg = settings.get("proactive") or {}
         if proactive_cfg.get("do_not_disturb", False):
