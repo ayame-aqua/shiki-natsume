@@ -25,7 +25,7 @@ PROACTIVE_PROMPTS = [
 def should_allow_proactive(inbound: InboundMessage | None = None) -> bool:
     """
     判断是否允许主动搭话。
-    
+
     本地策略：始终允许（除非配置禁用）。
     QQ 策略会覆盖此函数。
     """
@@ -36,7 +36,7 @@ def should_allow_proactive(inbound: InboundMessage | None = None) -> bool:
 def generate_proactive_prompt() -> str:
     """
     生成主动搭话的用户消息文本。
-    
+
     这是 system 或用户侧的触发文本，会送给 Agent。
     Agent 根据人设和上下文自己决定说什么。
     """

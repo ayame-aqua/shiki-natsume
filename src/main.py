@@ -399,16 +399,17 @@ def create_app(config: dict[str, Any] | None = None) -> FastAPI:
 
         gateway: Gateway = app.state.gateway
         sessions: SessionStore = app.state.sessions
-        
+
         last_activity = sessions.last_activity_time(DEFAULT_CHAT_ID)
         if last_activity is None:
             return {"triggered": False, "reason": "no_previous_activity"}
 
         import time
+
         now = time.time()
         idle_timeout = float(proactive_cfg.get("idle_timeout_s", 300))
         cooldown = float(proactive_cfg.get("cooldown_s", 600))
-        
+
         if now - last_activity < idle_timeout:
             return {"triggered": False, "reason": "not_idle_yet"}
 
