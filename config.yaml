@@ -49,3 +49,15 @@ channels:
   wechat:
     enabled: false
     experimental: true
+
+# P5 切片 2：主动搭话
+proactive:
+  enabled: true
+  # 冷场多久后主动搭话（秒）
+  idle_timeout_s: 300  # 5 分钟
+  # 随机碎碎念概率（0-1，0 表示关闭）
+  random_talk_prob: 0.1
+  # 主动搭话最小间隔（秒），避免刷屏
+  cooldown_s: 600  # 10 分钟
+  # 勿扰模式（可通过托盘菜单切换）
+  do_not_disturb: false

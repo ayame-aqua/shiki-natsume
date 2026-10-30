@@ -372,6 +372,106 @@ def create_app(config: dict[str, Any] | None = None) -> FastAPI:
         path = memory.export_markdown(dest)
         return {"path": str(path)}
 
+    @app.get("/api/proactive/status")
+    async def get_proactive_status() -> dict[str, Any]:
+        """查询主动搭话状态和配置。"""
+        proactive_cfg = settings.get("proactive") or {}
+        sessions: SessionStore = app.state.sessions
+        last_activity = sessions.last_activity_time(DEFAULT_CHAT_ID)
+        return {
+            "enabled": bool(proactive_cfg.get("enabled", False)),
+            "do_not_disturb": bool(proactive_cfg.get("do_not_disturb", False)),
+            "idle_timeout_s": int(proactive_cfg.get("idle_timeout_s", 300)),
+            "cooldown_s": int(proactive_cfg.get("cooldown_s", 600)),
+            "last_activity_ms": int(last_activity * 1000) if last_activity else None,
+        }
+
+    @app.post("/api/proactive/trigger")
+    async def trigger_proactive() -> dict[str, Any]:
+        """手动触发主动搭话（供桌宠定时器调用）。"""
+        from src.core.policy.local import generate_proactive_prompt
+        from uuid import uuid4
+
+        proactive_cfg = settings.get("proactive") or {}
+        if proactive_cfg.get("do_not_disturb", False):
+            return {"triggered": False, "reason": "do_not_disturb"}
+
+        gateway: Gateway = app.state.gateway
+        sessions: SessionStore = app.state.sessions
+        
+        last_activity = sessions.last_activity_time(DEFAULT_CHAT_ID)
+        if last_activity is None:
+            return {"triggered": False, "reason": "no_previous_activity"}
+
+        import time
+        now = time.time()
+        idle_timeout = float(proactive_cfg.get("idle_timeout_s", 300))
+        cooldown = float(proactive_cfg.get("cooldown_s", 600))
+        
+        if now - last_activity < idle_timeout:
+            return {"triggered": False, "reason": "not_idle_yet"}
+
+        last_proactive = getattr(app.state, "last_proactive_time", 0.0)
+        if now - last_proactive < cooldown:
+            return {"triggered": False, "reason": "cooldown"}
+
+        prompt_text = generate_proactive_prompt()
+        inbound = InboundMessage(
+            message_id=str(uuid4()),
+            channel="desktop",
+            chat_type="dm",
+            chat_id=DEFAULT_CHAT_ID,
+            sender_id="system",
+            sender_name="System",
+            text=prompt_text,
+            reply_to=None,
+            mentioned_self=False,
+            created_at=int(now * 1000),
+            raw_type="text",
+        )
+
+        result = await gateway.handle(inbound)
+        app.state.last_proactive_time = now
+
+        if result.error_code or result.outbound is None:
+            return {
+                "triggered": False,
+                "reason": "agent_failed",
+                "error": result.error_code,
+            }
+
+        outbound = result.outbound
+        tts: SoVitsTts | None = getattr(app.state, "tts", None)
+        audio_url = None
+        if outbound.speech_ja and isinstance(tts, SoVitsTts):
+            try:
+                clip = await tts.synthesize_to_cache(outbound.speech_ja, outbound.emotion)
+                audio_url = f"/media/tts/{clip.audio_id}"
+            except TtsError:
+                logger.exception("proactive tts failed")
+
+        return {
+            "triggered": True,
+            "message_id": outbound.message_id,
+            "texts": outbound.texts,
+            "emotion": outbound.emotion,
+            "audio_url": audio_url,
+        }
+
+    @app.post("/api/proactive/dnd")
+    async def toggle_dnd(payload: dict[str, Any]) -> dict[str, Any]:
+        """切换勿扰模式（供托盘菜单调用）。"""
+        enabled = payload.get("enabled")
+        if not isinstance(enabled, bool):
+            raise HTTPException(status_code=400, detail="enabled must be boolean")
+        
+        # 注意：此处只是运行时状态，不持久化到 config.yaml
+        # 生产版本应当使用配置文件或数据库
+        proactive_cfg = settings.get("proactive") or {}
+        proactive_cfg["do_not_disturb"] = enabled
+        
+        return {"do_not_disturb": enabled}
+
     @app.get("/")
     async def index() -> FileResponse:
         return FileResponse(WEB_DIR / "index.html")
