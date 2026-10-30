@@ -1,0 +1,31 @@
+/**
+ * 桌宠窗口特定样式
+ * 仅在 Electron 环境下加载
+ */
+
+/* 让顶部区域和 Live2D 区域可拖拽 */
+.brand,
+.live2d-container {
+  -webkit-app-region: drag;
+  cursor: move;
+}
+
+/* 按钮和可交互元素不可拖拽 */
+button,
+textarea,
+input,
+a,
+.messages {
+  -webkit-app-region: no-drag;
+}
+
+/* 确保透明区域不遮挡桌面 */
+body {
+  background: transparent;
+}
+
+/* 记忆链接按钮保持可点击 */
+.memory-link {
+  -webkit-app-region: no-drag;
+  cursor: pointer;
+}
