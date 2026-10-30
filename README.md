@@ -231,6 +231,7 @@ shiki-natsume/
   src/memory/
   src/speech/
   src/channels/           web / voice；qq、wechat 空壳
+  desktop/                P5 Electron 桌宠窗口
   web/                    聊天页 + live2d.js
   web/live2d/             配置；皮自备不入库
   tests/
