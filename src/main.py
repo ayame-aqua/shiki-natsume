@@ -466,12 +466,12 @@ def create_app(config: dict[str, Any] | None = None) -> FastAPI:
         enabled = payload.get("enabled")
         if not isinstance(enabled, bool):
             raise HTTPException(status_code=400, detail="enabled must be boolean")
-        
+
         # 注意：此处只是运行时状态，不持久化到 config.yaml
         # 生产版本应当使用配置文件或数据库
         proactive_cfg = settings.get("proactive") or {}
         proactive_cfg["do_not_disturb"] = enabled
-        
+
         return {"do_not_disturb": enabled}
 
     @app.get("/")
