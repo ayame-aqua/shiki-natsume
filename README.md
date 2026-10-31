@@ -97,6 +97,16 @@ python -m src.main
 
 打开 `http://127.0.0.1:8787`。没配皮时左侧是「未配置模型」，右边照常聊天。
 
+### 桌宠窗口（P5 切片 1）
+
+```bash
+cd desktop
+npm install  # 首次运行
+npm start
+```
+
+透明、置顶、可拖拽的桌宠窗口，自动加载上述 FastAPI。详见 [desktop/README.md](desktop/README.md)。
+
 SoVITS 在原工程目录启动，例如：
 
 ```text
@@ -180,7 +190,7 @@ GPT 可以出原画，交不出 `.moc3`。切层和绑模用 Live2D Cubism Edito
 | P3-A | 出声 | 仓库已接线 |
 | P3-B / C | 听你 / 实时轮次 | 仓库已接线 |
 | P4 | Live2D 口型与表情 | 仓库已接线；待挂皮 |
-| P5 | 桌宠窗 + 看屏 + 打断 | 未开始。本机对齐收口 |
+| P5 | 桌宠窗 + 看屏 + 打断 | **切片 1：** 桌宠窗已实现 |
 | P6 | QQ | 最后出门。DSH qqbot 只收发 |
 | P7 | 微信 | 最后出门。先过合规门 |
 | P8 | 自有底模 + LoRA | 主料原作夏目台词；现在不训 |
@@ -202,6 +212,7 @@ P5 没过，不开 QQ / 微信登录代码。
 | TTS | 本机 GPT-SoVITS HTTP |
 | ASR | 孔子 4 → SenseVoice → Whisper |
 | Live2D | pixi-live2d-display 0.5.0-beta + Cubism Core 4 |
+| 桌宠窗口 | Electron 28（Windows 优先） |
 | QQ（计划） | DSH 官方 qqbot 只当通道 |
 
 规范见 `.cursor/rules/` 与阿里巴巴程序员白皮书底线：见名知意、禁止魔法值、失败要有日志、密钥不进日志。
@@ -220,6 +231,7 @@ shiki-natsume/
   src/memory/
   src/speech/
   src/channels/           web / voice；qq、wechat 空壳
+  desktop/                P5 Electron 桌宠窗口
   web/                    聊天页 + live2d.js
   web/live2d/             配置；皮自备不入库
   tests/

@@ -1,0 +1,32 @@
+{
+  "name": "shiki-natsume-desktop",
+  "version": "0.59.0",
+  "description": "四季夏目桌宠窗口",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder"
+  },
+  "author": "ayame-aqua",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.1"
+  },
+  "dependencies": {
+    "electron-store": "^8.1.0"
+  },
+  "build": {
+    "appId": "com.ayameaqua.shiki-natsume",
+    "productName": "四季夏目",
+    "win": {
+      "target": "nsis",
+      "icon": "icon.ico"
+    },
+    "files": [
+      "main.js",
+      "preload.js"
+    ]
+  }
+}
