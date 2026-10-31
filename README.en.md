@@ -29,7 +29,7 @@ Local talk and QQ talk are **not the same voice**:
 | What she sees | Later: your screen | Group messages |
 | How she answers | Text + Japanese TTS + skin | Short lines, stickers, MCP images |
 
-Current tag **v0.58**. Web chat, memory, the voice path, and a Live2D placeholder are in the repo. The desktop window, screen watch, and QQ login are not.
+Current tag **v0.60**. Web chat, memory, the voice path, a Live2D placeholder, the transparent pet window, and idle proactive talk are in the repo. Screen watch, barge-in, and QQ login are not.
 
 ---
 
@@ -45,7 +45,7 @@ Acceptance is on this machine. Marketing does not count.
 | Mic ASR, Talk button, auto turn | Wired; wait until you speak two turns (P3-B / P3-C) |
 | Left-side Live2D or “no model” | Wired (P4). No skin in the repo |
 | Lip sync / five emotions | AnalyserNode + `emotionMap` wired; needs a Cubism 4 skin |
-| Transparent pet window, screen, barge-in | Not started (P5) |
+| Transparent pet window, idle talk, DND | Wired (P5 slices 1–2). Screen / barge-in not done |
 | QQ / WeChat login | Forbidden until P5 is accepted. QQ will be DSH qqbot I/O only (P6) |
 
 ---
@@ -96,6 +96,16 @@ python -m src.main
 ```
 
 Open `http://127.0.0.1:8787`. Without a skin the left panel says the model is missing; chat on the right still works.
+
+### Desktop window (P5)
+
+```bash
+cd desktop
+npm install
+npm start
+```
+
+Frameless, transparent, always on top. After a quiet stretch she starts talking; the tray can mute that. See [desktop/README.md](desktop/README.md).
 
 Start SoVITS from its own project, for example:
 
@@ -180,7 +190,7 @@ Numbers are execution order. A hard dependency that is not accepted blocks the n
 | P3-A | Speak | Wired in repo |
 | P3-B / C | Hear / live turns | Wired in repo |
 | P4 | Live2D mouth + face | Wired; waiting for a skin |
-| P5 | Pet window + screen + barge-in | Not started. Local alignment closes here |
+| P5 | Pet window + screen + barge-in | Window + idle talk wired; screen / barge-in not done |
 | P6 | QQ | Last. DSH qqbot is I/O only |
 | P7 | WeChat | Last. Compliance first |
 | P8 | Own base model + LoRA | Source lines from the original Natsume; no training now |
@@ -202,6 +212,7 @@ No QQ / WeChat login code until P5 passes.
 | TTS | Local GPT-SoVITS HTTP |
 | ASR | Confucius 4 → SenseVoice → Whisper |
 | Live2D | pixi-live2d-display 0.5.0-beta + Cubism Core 4 |
+| Pet window | Electron 28 (Windows first) |
 | QQ (planned) | Official DSH qqbot as a pipe only |
 
 Rules live in `.cursor/rules/` plus the Alibaba engineer handbook floor: names that mean something, no magic numbers, failures get logs, secrets stay out of logs.
@@ -220,6 +231,7 @@ shiki-natsume/
   src/memory/
   src/speech/
   src/channels/           web / voice; qq and wechat are shells
+  desktop/                P5 Electron pet window
   web/                    chat page + live2d.js
   web/live2d/             config; skins stay local
   tests/

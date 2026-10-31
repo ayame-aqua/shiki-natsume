@@ -1,31 +1,32 @@
 /**
- * 桌宠窗口特定样式
- * 仅在 Electron 环境下加载
+ * 仅 Electron 注入。Live2D 可拖窗，聊天区保持可读。
  */
 
-/* 让顶部区域和 Live2D 区域可拖拽 */
 .brand,
 .live2d-container {
   -webkit-app-region: drag;
   cursor: move;
 }
 
-/* 按钮和可交互元素不可拖拽 */
 button,
 textarea,
 input,
 a,
-.messages {
+.messages,
+.composer,
+.memory-link {
   -webkit-app-region: no-drag;
 }
 
-/* 确保透明区域不遮挡桌面 */
 body {
   background: transparent;
 }
 
-/* 记忆链接按钮保持可点击 */
+.app {
+  background: rgba(26, 28, 34, 0.88);
+  border-radius: 12px;
+}
+
 .memory-link {
-  -webkit-app-region: no-drag;
   cursor: pointer;
 }

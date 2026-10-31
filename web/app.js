@@ -713,8 +713,19 @@ fetch("/api/character")
   })
   .catch(() => {});
 
+function bootDesktopShell() {
+  if (!window.electronAPI) {
+    return;
+  }
+  const link = document.createElement("link");
+  link.rel = "stylesheet";
+  link.href = "/assets/desktop.css";
+  document.head.appendChild(link);
+}
+
 connect();
 syncComposer();
+bootDesktopShell();
 
 if (window.live2d && typeof window.live2d.init === "function") {
   window.live2d.init().catch((error) => {

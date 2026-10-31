@@ -11,7 +11,6 @@
 ## 步骤 1：启动 FastAPI 后端
 
 ```bash
-cd /workspace
 python -m venv .venv
 .venv\Scripts\activate
 pip install -e ".[dev]"

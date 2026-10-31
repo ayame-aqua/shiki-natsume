@@ -1,74 +1,48 @@
 # 四季夏目桌宠窗口
 
-P5 第一切片：Electron 透明桌宠窗口，加载现有 web UI。
+Electron 透明窗口，加载本机 `http://127.0.0.1:8787`。主动搭话由后端判定，气泡和语音仍走网页 WebSocket。
 
 ## 功能
 
-- ✅ 无边框透明窗口
-- ✅ 始终置顶
-- ✅ 可拖拽（点击 Live2D 区域或上方标题栏）
-- ✅ 持久化窗口位置
-- ✅ 自动连接本地 FastAPI (127.0.0.1:8787)
-- ✅ 调试窗口自动分离
-
-## 运行要求
-
-1. **FastAPI 后端必须先启动**：
-   ```bash
-   cd /workspace
-   python -m src.main
-   ```
-   确保 http://127.0.0.1:8787 可访问。
-
-2. Node.js 16+
-
-## 安装
-
-```bash
-cd desktop
-npm install
-```
+- 无边框、透明、置顶、可拖拽
+- 记住窗口位置
+- 冷场后主动开口（复用同一套 Agent / TTS / Live2D）
+- 托盘菜单切换勿扰
 
 ## 运行
 
-```bash
+先开后端：
+
+```text
+python -m src.main
+```
+
+确认浏览器能打开 `http://127.0.0.1:8787`，再开桌宠：
+
+```text
+cd desktop
+npm install
 npm start
 ```
 
-## 使用
+- 拖动：点标题栏或 Live2D 区域
+- 勿扰：右键托盘图标
+- 开发时会弹出独立 DevTools；`NODE_ENV=production` 时不弹
 
-- **拖动窗口**：点击 Live2D 区域或顶部标题栏拖动
-- **调整大小**：拖动窗口边缘（Windows 原生支持）
-- **关闭**：关闭按钮或任务栏右键退出
-- **调试**：自动打开独立 DevTools 窗口
+## 配置
 
-## 窗口位置
+`config.yaml` 的 `proactive`：
 
-窗口位置自动保存在：
-- Windows: `%APPDATA%\shiki-natsume-desktop\config.json`
-- macOS: `~/Library/Application Support/shiki-natsume-desktop/config.json`
-- Linux: `~/.config/shiki-natsume-desktop/config.json`
+```yaml
+proactive:
+  enabled: true
+  idle_timeout_s: 300
+  cooldown_s: 600
+  do_not_disturb: false
+```
 
-## 注意事项
+窗口位置和托盘勿扰在用户配置目录，不进仓库。
 
-- 透明窗口在不同 Windows 版本上表现可能略有差异
-- 确保 FastAPI 已启动并监听 8787 端口
-- 窗口会自动加载完整的 web UI（包括 Live2D、聊天、语音）
-- Live2D 模型需要按 [web/live2d/README.md](../web/live2d/README.md) 配置
+## 本切片不做
 
-## P5 切片 1 范围
-
-当前实现：
-- ✅ 最小 Electron shell
-- ✅ 无边框、透明、置顶
-- ✅ 可拖拽
-- ✅ 持久化窗口位置
-- ✅ 加载现有 web UI
-
-**不在此切片**（后续迭代）：
-- ❌ 主动搭话 tick
-- ❌ 屏幕截图/CV
-- ❌ 勿扰模式
-- ❌ 语音打断
-- ❌ 点击动作（除拖拽外）
-- ❌ P6/P7 QQ/微信
+看屏 / 截屏、语音打断、点击动作、QQ / 微信。

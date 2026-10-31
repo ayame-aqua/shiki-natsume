@@ -6,15 +6,18 @@ import asyncio
 import json
 import logging
 import os
+import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from src.channels.chat_hub import ChatHub
 from src.channels.voice import VoiceChannel, inbound_from_transcript, parse_user_audio_frame
 from src.channels.web import (
     assistant_audio_frame,
@@ -28,6 +31,12 @@ from src.core.errors import BAD_REQUEST, human_message
 from src.core.living_notes import LivingNotesStore
 from src.core.llm import LLMClient, LLMError
 from src.core.persona import split_persona
+from src.core.policy.local import (
+    DEFAULT_COOLDOWN_S,
+    DEFAULT_IDLE_TIMEOUT_S,
+    generate_proactive_prompt,
+)
+from src.core.proactive import decide_proactive
 from src.core.session import SessionStore
 from src.core.types import InboundMessage, OutboundMessage
 from src.gateway import Gateway
@@ -122,12 +131,17 @@ def _attach_runtime(
         if llm is not None
         else None
     )
+    proactive_cfg = settings.get("proactive") or {}
     app.state.gateway = Gateway(dedup_ttl_s=dedup_ttl_s, agent=agent)
     app.state.memory = memory
     app.state.sessions = sessions
     app.state.llm = llm
     app.state.persona_path = persona_path
     app.state.llm_ready = llm is not None
+    app.state.chat_hub = ChatHub()
+    app.state.started_at = time.time()
+    app.state.last_proactive_time = 0.0
+    app.state.do_not_disturb = bool(proactive_cfg.get("do_not_disturb", False))
     speech_cfg = settings.get("speech") or {}
     api_base = str(speech_cfg.get("tts_api_base", DEFAULT_TTS_API_BASE))
     ref_rel = str(speech_cfg.get("tts_ref_dir", DEFAULT_REF_DIR))
@@ -372,6 +386,32 @@ def create_app(config: dict[str, Any] | None = None) -> FastAPI:
         path = memory.export_markdown(dest)
         return {"path": str(path)}
 
+    @app.get("/api/proactive/status")
+    async def get_proactive_status() -> dict[str, Any]:
+        proactive_cfg = settings.get("proactive") or {}
+        sessions: SessionStore = app.state.sessions
+        last_activity = sessions.last_activity_time(DEFAULT_CHAT_ID)
+        return {
+            "enabled": bool(proactive_cfg.get("enabled", False)),
+            "do_not_disturb": bool(getattr(app.state, "do_not_disturb", False)),
+            "idle_timeout_s": int(proactive_cfg.get("idle_timeout_s", DEFAULT_IDLE_TIMEOUT_S)),
+            "cooldown_s": int(proactive_cfg.get("cooldown_s", DEFAULT_COOLDOWN_S)),
+            "last_activity_ms": int(last_activity * 1000) if last_activity else None,
+        }
+
+    @app.post("/api/proactive/trigger")
+    async def trigger_proactive() -> dict[str, Any]:
+        return await _trigger_proactive(app, settings)
+
+    @app.post("/api/proactive/dnd")
+    async def toggle_dnd(payload: dict[str, Any]) -> dict[str, Any]:
+        enabled = payload.get("enabled")
+        if not isinstance(enabled, bool):
+            raise HTTPException(status_code=400, detail="enabled must be boolean")
+        app.state.do_not_disturb = enabled
+        logger.info("proactive dnd enabled=%s", enabled)
+        return {"do_not_disturb": enabled}
+
     @app.get("/")
     async def index() -> FileResponse:
         return FileResponse(WEB_DIR / "index.html")
@@ -389,6 +429,8 @@ def create_app(config: dict[str, Any] | None = None) -> FastAPI:
     @app.websocket("/ws/chat")
     async def chat_socket(websocket: WebSocket) -> None:
         await websocket.accept()
+        hub: ChatHub = app.state.chat_hub
+        hub.add(websocket)
         gateway: Gateway = app.state.gateway
         try:
             while True:
@@ -396,6 +438,8 @@ def create_app(config: dict[str, Any] | None = None) -> FastAPI:
                 await _handle_socket_text(websocket, gateway, raw)
         except WebSocketDisconnect:
             logger.info("websocket disconnected")
+        finally:
+            hub.discard(websocket)
 
     if WEB_DIR.is_dir():
         app.mount("/assets", StaticFiles(directory=WEB_DIR), name="assets")
@@ -403,6 +447,94 @@ def create_app(config: dict[str, Any] | None = None) -> FastAPI:
     if live2d_dir.is_dir():
         app.mount("/live2d", StaticFiles(directory=live2d_dir), name="live2d")
     return app
+
+
+async def _trigger_proactive(app: FastAPI, settings: dict[str, Any]) -> dict[str, Any]:
+    proactive_cfg = settings.get("proactive") or {}
+    sessions: SessionStore = app.state.sessions
+    now = time.time()
+    decision = decide_proactive(
+        enabled=bool(proactive_cfg.get("enabled", False)),
+        do_not_disturb=bool(getattr(app.state, "do_not_disturb", False)),
+        now=now,
+        last_activity=sessions.last_activity_time(DEFAULT_CHAT_ID),
+        started_at=float(getattr(app.state, "started_at", now)),
+        last_proactive=float(getattr(app.state, "last_proactive_time", 0.0)),
+        idle_timeout_s=float(proactive_cfg.get("idle_timeout_s", DEFAULT_IDLE_TIMEOUT_S)),
+        cooldown_s=float(proactive_cfg.get("cooldown_s", DEFAULT_COOLDOWN_S)),
+    )
+    if not decision.allowed:
+        return {"triggered": False, "reason": decision.reason}
+
+    inbound = InboundMessage(
+        message_id=str(uuid4()),
+        channel="web",
+        chat_type="system",
+        chat_id=DEFAULT_CHAT_ID,
+        sender_id="system",
+        sender_name="system",
+        text=generate_proactive_prompt(),
+        created_at=now,
+        raw_type="proactive",
+    )
+    gateway: Gateway = app.state.gateway
+    result = await gateway.handle(inbound)
+    if result.error_code or result.outbound is None:
+        logger.warning(
+            "proactive agent failed reason=%s error=%s",
+            "agent_failed",
+            result.error_code,
+        )
+        return {
+            "triggered": False,
+            "reason": "agent_failed",
+            "error": result.error_code,
+        }
+
+    outbound = result.outbound
+    app.state.last_proactive_time = now
+    audio_url = await _synthesize_outbound_audio(app, outbound)
+    await _broadcast_outbound(app, outbound, audio_url)
+    logger.info(
+        "proactive triggered message_id=%s clients=%s",
+        outbound.message_id,
+        app.state.chat_hub.client_count(),
+    )
+    return {
+        "triggered": True,
+        "message_id": outbound.message_id,
+        "texts": outbound.texts,
+        "emotion": outbound.emotion,
+        "audio_url": audio_url,
+    }
+
+
+async def _synthesize_outbound_audio(app: FastAPI, outbound: OutboundMessage) -> str | None:
+    speech_ja = outbound.speech_ja
+    if not speech_ja:
+        return None
+    tts = getattr(app.state, "tts", None)
+    if not isinstance(tts, SoVitsTts):
+        return None
+    try:
+        clip = await tts.synthesize_to_cache(speech_ja, outbound.emotion)
+    except TtsError:
+        logger.exception("proactive tts failed message_id=%s", outbound.message_id)
+        return None
+    outbound.audio_url = f"/media/tts/{clip.audio_id}"
+    return outbound.audio_url
+
+
+async def _broadcast_outbound(
+    app: FastAPI,
+    outbound: OutboundMessage,
+    audio_url: str | None,
+) -> None:
+    hub: ChatHub = app.state.chat_hub
+    await hub.broadcast_json(assistant_text_frame(outbound))
+    if audio_url:
+        await hub.broadcast_json(assistant_audio_frame(outbound, url=audio_url))
+    await hub.broadcast_json({"type": "status", "message_id": outbound.message_id, "state": "idle"})
 
 
 async def _handle_socket_text(websocket: WebSocket, gateway: Gateway, raw: str) -> None:

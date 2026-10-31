@@ -62,3 +62,5 @@
 | [v0.56](./v0.56.md) | P6 QQ 通道定为 DSH 官方 qqbot 只收发；大脑仍是四季夏目 |
 | [v0.57](./v0.57.md) | P4 Live2D 接线：占位、AudioContext 口型、真实 CDN；本机挂皮后再勾表情/口型 |
 | [v0.58](./v0.58.md) | 中英日三份 README：写清已接线与未做，不抄 Artemis 宣传 |
+| [v0.59](./v0.59.md) | P5 切片 1：Electron 透明桌宠窗 |
+| [v0.60](./v0.60.md) | P5 切片 2：主动搭话接到 WebSocket 气泡 / TTS |

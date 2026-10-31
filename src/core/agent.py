@@ -49,15 +49,17 @@ class Agent:
         self._extract_every_n = max(0, int(extract_every_n))
 
     async def run(self, inbound: InboundMessage) -> OutboundMessage:
-        if self._living_notes is not None and looks_like_correction(inbound.text):
+        is_system = inbound.chat_type == "system"
+        if not is_system and self._living_notes is not None and looks_like_correction(inbound.text):
             await absorb_correction(
                 self._llm,
                 self._living_notes,
                 user_text=inbound.text,
                 last_reply=self._last_assistant(inbound.chat_id),
             )
-        self._memory.apply_user_text(inbound.text)
-        self._memory.apply_mood_from_text(inbound.text)
+        if not is_system:
+            self._memory.apply_user_text(inbound.text)
+            self._memory.apply_mood_from_text(inbound.text)
         persona = load_persona(self._persona_path)
         profile = self._memory.profile_block()
         impression = self._memory.impression_block()
@@ -89,7 +91,10 @@ class Agent:
         ]
         for turn in self._sessions.history(inbound.chat_id):
             messages.append({"role": turn.role, "content": turn.text})
-        messages.append({"role": "user", "content": inbound.text})
+        if is_system:
+            messages.append({"role": "system", "content": inbound.text})
+        else:
+            messages.append({"role": "user", "content": inbound.text})
         messages.append({"role": "system", "content": trailing_system(inbound.text)})
 
         try:
@@ -119,10 +124,11 @@ class Agent:
             emotion=parsed.emotion,
             silent=False,
         )
-        self._sessions.append(
-            inbound.chat_id,
-            Turn(role="user", text=inbound.text),
-        )
+        if not is_system:
+            self._sessions.append(
+                inbound.chat_id,
+                Turn(role="user", text=inbound.text),
+            )
         self._sessions.append(
             inbound.chat_id,
             Turn(
@@ -132,7 +138,8 @@ class Agent:
                 speech_ja=speech_ja or None,
             ),
         )
-        await self._maybe_extract(inbound.chat_id)
+        if not is_system:
+            await self._maybe_extract(inbound.chat_id)
         return outbound
 
     async def _maybe_extract(self, chat_id: str) -> None:
