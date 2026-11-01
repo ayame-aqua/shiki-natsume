@@ -115,6 +115,16 @@ python api_v2.py -a 127.0.0.1 -p 9880 -c GPT_SoVITS/configs/tts_infer_natsume.ya
 
 詳細は [ローカル資源](docs/本地资源.md)。
 
+### DeepSeek Harness（傍系。脳ではない）
+
+`scripts/start_dsh.bat` をダブルクリックするか、リポジトリ根で：
+
+```text
+.\scripts\start_dsh.bat
+```
+
+ユーザーホームから公式 `dsh web` を起動する（既定 `http://127.0.0.1:3080`）。Node 24.9+ とグローバル `dsh`（`npm install -g @deepseek-ai/dsh`）が必要。止めても Web / 音声 / デスクトップ窓は影響しない。P6 の QQ 橋はまだ無い。このスクリプトは QQ にログインしない。
+
 ---
 
 ## Live2D（P4）
