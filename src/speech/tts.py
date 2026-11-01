@@ -28,6 +28,7 @@ from src.speech.constants import (
     TTS_MEDIA_TYPE,
     TTS_TEXT_LANG,
     TTS_TEXT_SPLIT_METHOD,
+    TTS_UNREACHABLE_COOLDOWN_S,
     WAV_HEADER_SIZE,
 )
 
@@ -69,11 +70,17 @@ class SoVitsTts:
         self._weights_applied = False
         self._prompts = _load_prompts(self._ref_dir)
         self._cache_dir.mkdir(parents=True, exist_ok=True)
+        self._unreachable_until = 0.0
+
+    def _mark_unavailable(self) -> None:
+        self._unreachable_until = time.monotonic() + TTS_UNREACHABLE_COOLDOWN_S
 
     async def synthesize_to_cache(self, text: str, emotion: str) -> CachedClip:
         speech = (text or "").strip()
         if not speech:
             raise TtsError("empty speech_ja")
+        if time.monotonic() < self._unreachable_until:
+            raise TtsError("tts unavailable")
         audio_id = _audio_id(speech, emotion)
         path = self._cache_dir / f"{audio_id}.{TTS_MEDIA_TYPE}"
         if path.is_file() and path.stat().st_size > WAV_HEADER_SIZE:
@@ -120,8 +127,12 @@ class SoVitsTts:
             async with httpx.AsyncClient(timeout=timeout, trust_env=False) as client:
                 await self._apply_weights(client)
                 response = await client.post(url, json=payload)
+        except httpx.TransportError as exc:
+            self._mark_unavailable()
+            logger.warning("tts unavailable api=%s error=%s", self._api_base, type(exc).__name__)
+            raise TtsError("tts unavailable") from exc
         except httpx.HTTPError as exc:
-            logger.exception("tts http failed")
+            logger.warning("tts http failed error=%s", type(exc).__name__)
             raise TtsError("tts request failed") from exc
         if response.status_code >= 400:
             logger.error(
@@ -137,19 +148,34 @@ class SoVitsTts:
     async def _apply_weights(self, client: httpx.AsyncClient) -> None:
         if self._weights_applied:
             return
-        if self._gpt_weights is not None:
-            await self._set_weight(client, "set_gpt_weights", self._gpt_weights)
-        if self._sovits_weights is not None:
-            await self._set_weight(client, "set_sovits_weights", self._sovits_weights)
+        for endpoint, path in (
+            ("set_gpt_weights", self._gpt_weights),
+            ("set_sovits_weights", self._sovits_weights),
+        ):
+            if path is None:
+                continue
+            if not await self._set_weight(client, endpoint, path):
+                self._mark_unavailable()
+                raise TtsError("tts unavailable")
         self._weights_applied = True
 
-    async def _set_weight(self, client: httpx.AsyncClient, endpoint: str, path: Path) -> None:
+    async def _set_weight(self, client: httpx.AsyncClient, endpoint: str, path: Path) -> bool:
         url = f"{self._api_base}/{endpoint}"
         try:
             response = await client.get(url, params={"weights_path": str(path.resolve())})
-        except httpx.HTTPError:
-            logger.exception("tts %s failed path=%s", endpoint, path.name)
-            return
+        except httpx.TransportError as exc:
+            logger.warning(
+                "tts %s unavailable path=%s error=%s",
+                endpoint,
+                path.name,
+                type(exc).__name__,
+            )
+            return False
+        except httpx.HTTPError as exc:
+            logger.warning(
+                "tts %s failed path=%s error=%s", endpoint, path.name, type(exc).__name__
+            )
+            return True
         if response.status_code >= 400:
             logger.error(
                 "tts %s status=%s body=%s",
@@ -157,8 +183,9 @@ class SoVitsTts:
                 response.status_code,
                 _error_snippet(response.content),
             )
-            return
+            return True
         logger.info("tts %s ok path=%s", endpoint, path.name)
+        return True
 
     def _ref_for(self, emotion: str) -> tuple[Path, str]:
         key = emotion if emotion in self._prompts else SAD_FALLBACK_EMOTION

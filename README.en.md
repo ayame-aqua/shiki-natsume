@@ -29,7 +29,7 @@ Local talk and QQ talk are **not the same voice**:
 | What she sees | Later: your screen | Group messages |
 | How she answers | Text + Japanese TTS + skin | Short lines, stickers, MCP images |
 
-Current tag **v0.62**. Web chat, memory, the voice path, a Live2D placeholder, the transparent pet window, and idle proactive talk are in the repo. Screen watch, barge-in, and QQ login are not.
+Current tag **v0.63**. Web chat, memory, the voice path, a Live2D placeholder, the transparent pet window, and idle proactive talk are in the repo. Screen watch, barge-in, and QQ login are not.
 
 ---
 

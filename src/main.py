@@ -519,7 +519,7 @@ async def _synthesize_outbound_audio(app: FastAPI, outbound: OutboundMessage) ->
     try:
         clip = await tts.synthesize_to_cache(speech_ja, outbound.emotion)
     except TtsError:
-        logger.exception("proactive tts failed message_id=%s", outbound.message_id)
+        logger.warning("proactive tts failed message_id=%s", outbound.message_id)
         return None
     outbound.audio_url = f"/media/tts/{clip.audio_id}"
     return outbound.audio_url
@@ -667,7 +667,7 @@ async def _send_assistant_audio(websocket: WebSocket, outbound: OutboundMessage)
     try:
         clip = await tts.synthesize_to_cache(speech_ja, outbound.emotion)
     except TtsError:
-        logger.exception("tts failed message_id=%s", outbound.message_id)
+        logger.warning("tts failed message_id=%s", outbound.message_id)
         await websocket.send_json(
             {
                 "type": "status",

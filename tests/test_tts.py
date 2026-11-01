@@ -8,6 +8,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import httpx
 import pytest
 from src.core.types import OutboundMessage
 from src.main import _send_assistant_audio
@@ -106,6 +107,28 @@ def test_synthesize_http_error(tmp_path: Path) -> None:
     with patch("src.speech.tts.httpx.AsyncClient", fake):
         with pytest.raises(TtsError, match="502"):
             asyncio.run(tts.synthesize_to_cache("こんにちは", "neutral"))
+
+
+def test_connect_timeout_cools_down(tmp_path: Path) -> None:
+    ref_dir = tmp_path / "refs"
+    ref_dir.mkdir()
+    (ref_dir / "ref_01.wav").write_bytes(_tiny_wav())
+    calls = {"n": 0}
+
+    class _DownClient(_FakeClient):
+        async def post(self, url: str, json: dict) -> _FakeResponse:
+            calls["n"] += 1
+            del url, json
+            raise httpx.ConnectTimeout("sovits down")
+
+    tts = SoVitsTts(api_base="http://sovits.test", ref_dir=ref_dir, cache_dir=tmp_path / "cache")
+    fake = _DownClient(_FakeResponse(200, b""), {})
+    with patch("src.speech.tts.httpx.AsyncClient", fake):
+        with pytest.raises(TtsError, match="unavailable"):
+            asyncio.run(tts.synthesize_to_cache("こんにちは", "neutral"))
+        with pytest.raises(TtsError, match="unavailable"):
+            asyncio.run(tts.synthesize_to_cache("また", "neutral"))
+    assert calls["n"] == 1
 
 
 def test_sad_falls_back_to_neutral_ref(tmp_path: Path) -> None:
