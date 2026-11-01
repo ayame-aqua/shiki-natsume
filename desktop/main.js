@@ -3,13 +3,12 @@
  * 窗口只加载本地 FastAPI；主动搭话走 HTTP，气泡和语音仍由网页 WebSocket 收。
  */
 
-const { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage } = require('electron');
+const { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, screen } = require('electron');
 const path = require('path');
 const Store = require('electron-store');
+const { DEFAULT_WINDOW_HEIGHT, DEFAULT_WINDOW_WIDTH, clampWindowBounds } = require('./window_bounds');
 
 const FASTAPI_URL = 'http://127.0.0.1:8787';
-const DEFAULT_WINDOW_WIDTH = 920;
-const DEFAULT_WINDOW_HEIGHT = 640;
 const PROACTIVE_CHECK_INTERVAL_MS = 60000;
 const TRAY_PNG_BASE64 =
   'iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAABHNCSVQICAgIfAhkiAAAAAlwSFlzAAAAdgAAAHYBTnsmCAAAABl0RVh0U29mdHdhcmUAd3d3Lmlua3NjYXBlLm9yZ5vuPBoAAABzSURBVDiNY2AYBaNgFIyCUTAKRgEjAwPDfyYG4gELKRoYGBj+k2EG2S5gYGAgahywDQNsDQwMDKRrYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgGNoaRsEoAAYAAN8gAhHbeqKMAAAAAElFTkSuQmCC';
@@ -28,13 +27,26 @@ let mainWindow = null;
 let tray = null;
 let proactiveTimer = null;
 
+function listWorkAreas() {
+  return screen.getAllDisplays().map((display) => display.workArea);
+}
+
+function resolveWindowBounds(stored) {
+  const bounds = clampWindowBounds(stored, listWorkAreas(), {
+    width: DEFAULT_WINDOW_WIDTH,
+    height: DEFAULT_WINDOW_HEIGHT,
+  });
+  store.set('windowBounds', bounds);
+  return bounds;
+}
+
 function createWindow() {
-  const bounds = store.get('windowBounds') || {};
+  const bounds = resolveWindowBounds(store.get('windowBounds'));
   mainWindow = new BrowserWindow({
     x: bounds.x,
     y: bounds.y,
-    width: bounds.width || DEFAULT_WINDOW_WIDTH,
-    height: bounds.height || DEFAULT_WINDOW_HEIGHT,
+    width: bounds.width,
+    height: bounds.height,
     frame: false,
     transparent: true,
     alwaysOnTop: true,
@@ -53,7 +65,7 @@ function createWindow() {
 
   mainWindow.on('close', () => {
     if (mainWindow) {
-      store.set('windowBounds', mainWindow.getBounds());
+      resolveWindowBounds(mainWindow.getBounds());
     }
   });
 
@@ -194,8 +206,8 @@ ipcMain.handle('set-window-bounds', (_event, bounds) => {
   if (!mainWindow) {
     return;
   }
-  mainWindow.setBounds(bounds);
-  store.set('windowBounds', bounds);
+  const next = resolveWindowBounds(bounds);
+  mainWindow.setBounds(next);
 });
 
 ipcMain.handle('get-dnd-status', () => Boolean(store.get('doNotDisturb', false)));

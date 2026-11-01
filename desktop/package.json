@@ -1,10 +1,11 @@
 {
   "name": "shiki-natsume-desktop",
-  "version": "0.60.0",
+  "version": "0.62.0",
   "description": "四季夏目桌宠窗口",
   "main": "main.js",
   "scripts": {
-    "start": "electron ."
+    "start": "electron .",
+    "test": "node --test window_bounds.test.js"
   },
   "author": "ayame-aqua",
   "license": "MIT",

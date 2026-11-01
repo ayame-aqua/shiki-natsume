@@ -29,5 +29,8 @@ jobs:
       - name: Tests
         run: pytest
 
+      - name: Desktop bounds
+        run: node --test desktop/window_bounds.test.js
+
       - name: Compile
         run: python -m compileall -q src
