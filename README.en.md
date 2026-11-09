@@ -29,7 +29,7 @@ Local talk and QQ talk are **not the same voice**:
 | What she sees | Later: your screen | Group messages |
 | How she answers | Text + Japanese TTS + skin | Short lines, stickers, MCP images |
 
-Current tag **v0.65**. Web chat, memory, the voice path, a Live2D placeholder, the transparent pet window, idle proactive talk, and foreground-window titles are in the repo. Screenshots, barge-in, and QQ login are not.
+Current tag **v0.66**. Web chat, memory, the voice path, a Live2D placeholder, the transparent pet window, idle proactive talk, window titles, and screenshot descriptions are in the repo. Barge-in and QQ login are not.
 
 ---
 
@@ -45,7 +45,7 @@ Acceptance is on this machine. Marketing does not count.
 | Mic ASR, Talk button, auto turn | Wired; wait until you speak two turns (P3-B / P3-C) |
 | Left-side Live2D or “no model” | Wired (P4). No skin in the repo |
 | Lip sync / five emotions | AnalyserNode + `emotionMap` wired; needs a Cubism 4 skin |
-| Transparent pet window, idle talk, DND, window title | Wired (P5 slices 1–3). Screenshot / barge-in not done |
+| Transparent pet window, idle talk, DND, title, screenshot | Wired (P5 slices 1–4). Barge-in not done |
 | QQ / WeChat login | Forbidden until P5 is accepted. QQ will be DSH qqbot I/O only (P6) |
 
 ---
@@ -200,7 +200,7 @@ Numbers are execution order. A hard dependency that is not accepted blocks the n
 | P3-A | Speak | Wired in repo |
 | P3-B / C | Hear / live turns | Wired in repo |
 | P4 | Live2D mouth + face | Wired; waiting for a skin |
-| P5 | Pet window + screen + barge-in | Window + idle talk + title wired; screenshot / barge-in not done |
+| P5 | Pet window + screen + barge-in | Window + idle + title + screenshot wired; barge-in / motion not done |
 | P6 | QQ | Last. DSH qqbot is I/O only |
 | P7 | WeChat | Last. Compliance first |
 | P8 | Own base model + LoRA | Source lines from the original Natsume; no training now |

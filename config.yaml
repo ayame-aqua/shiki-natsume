@@ -58,14 +58,25 @@ proactive:
   cooldown_s: 600
   do_not_disturb: false
 
-# P5-S3：只读前台标题；截屏留给 S4（use_screenshot 先关）。
+# P5-S4：标题 + 截屏描述。需要多模态模型时设 LLM_VISION_MODEL。
 vision:
   enabled: true
   use_title: true
-  use_screenshot: false
+  use_screenshot: true
   title_cooldown_s: 600
   focus_idle_timeout_s: 60
-  process_blacklist: []
-  title_keywords_blacklist: []
+  process_blacklist:
+    - KeePass
+    - KeePassXC
+    - 1Password
+    - Bitwarden
+    - 银行
+  title_keywords_blacklist:
+    - 支付
+    - 密码
+    - password
+    - 验证码
+    - 银行
   max_side_px: 768
+  jpeg_quality: 80
   persist_frames: false

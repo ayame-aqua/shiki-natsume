@@ -3,13 +3,23 @@
  * 窗口只加载本地 FastAPI；主动搭话走 HTTP，气泡和语音仍由网页 WebSocket 收。
  */
 
-const { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, screen } = require('electron');
+const {
+  app,
+  BrowserWindow,
+  ipcMain,
+  Tray,
+  Menu,
+  nativeImage,
+  screen,
+  globalShortcut,
+} = require('electron');
 const path = require('path');
 const Store = require('electron-store');
 const { DEFAULT_WINDOW_HEIGHT, DEFAULT_WINDOW_WIDTH, clampWindowBounds } = require('./window_bounds');
 
 const FASTAPI_URL = 'http://127.0.0.1:8787';
 const PROACTIVE_CHECK_INTERVAL_MS = 60000;
+const VISION_PAUSE_ACCELERATOR = 'CommandOrControl+Shift+F9';
 const TRAY_PNG_BASE64 =
   'iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAABHNCSVQICAgIfAhkiAAAAAlwSFlzAAAAdgAAAHYBTnsmCAAAABl0RVh0U29mdHdhcmUAd3d3Lmlua3NjYXBlLm9yZ5vuPBoAAABzSURBVDiNY2AYBaNgFIyCUTAKRgEjAwPDfyYG4gELKRoYGBj+k2EG2S5gYGAgahywDQNsDQwMDKRrYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgGNoaRsEoAAYAAN8gAhHbeqKMAAAAAElFTkSuQmCC';
 
@@ -20,6 +30,7 @@ const store = new Store({
       height: DEFAULT_WINDOW_HEIGHT,
     },
     doNotDisturb: false,
+    visionPaused: false,
   },
 });
 
@@ -105,6 +116,7 @@ function updateTrayMenu() {
     return;
   }
   const dnd = Boolean(store.get('doNotDisturb', false));
+  const visionPaused = Boolean(store.get('visionPaused', false));
   tray.setContextMenu(
     Menu.buildFromTemplate([
       { label: '显示窗口', click: showMainWindow },
@@ -115,6 +127,15 @@ function updateTrayMenu() {
         checked: dnd,
         click: () => {
           void toggleDoNotDisturb();
+        },
+      },
+      {
+        label: '暂停看屏',
+        type: 'checkbox',
+        checked: visionPaused,
+        accelerator: 'CommandOrControl+Shift+F9',
+        click: () => {
+          void toggleVisionPause();
         },
       },
       { type: 'separator' },
@@ -150,6 +171,30 @@ async function toggleDoNotDisturb() {
   await syncDndToBackend();
 }
 
+async function syncVisionPauseToBackend() {
+  const paused = Boolean(store.get('visionPaused', false));
+  try {
+    await postJson('/api/vision/pause', { paused });
+  } catch (error) {
+    console.error('Failed to sync vision pause:', error);
+  }
+}
+
+async function toggleVisionPause() {
+  store.set('visionPaused', !store.get('visionPaused', false));
+  updateTrayMenu();
+  await syncVisionPauseToBackend();
+}
+
+function registerVisionHotkey() {
+  const ok = globalShortcut.register(VISION_PAUSE_ACCELERATOR, () => {
+    void toggleVisionPause();
+  });
+  if (!ok) {
+    console.error('Failed to register vision pause hotkey:', VISION_PAUSE_ACCELERATOR);
+  }
+}
+
 async function checkProactive() {
   if (!mainWindow || store.get('doNotDisturb', false)) {
     return;
@@ -181,7 +226,9 @@ function stopProactiveTimer() {
 app.whenReady().then(() => {
   createWindow();
   createTray();
+  registerVisionHotkey();
   void syncDndToBackend();
+  void syncVisionPauseToBackend();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -194,6 +241,10 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit();
   }
+});
+
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll();
 });
 
 app.on('before-quit', () => {

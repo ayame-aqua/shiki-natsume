@@ -75,11 +75,15 @@ from src.speech.debug_log import speech_debug
 from src.speech.tts import SoVitsTts, TtsError
 from src.vision.constants import (
     DEFAULT_FOCUS_IDLE_TIMEOUT_S,
+    DEFAULT_JPEG_QUALITY,
+    DEFAULT_MAX_SIDE_PX,
     DEFAULT_TITLE_COOLDOWN_S,
+    DEFAULT_USE_SCREENSHOT,
     DEFAULT_USE_TITLE,
     DEFAULT_VISION_ENABLED,
 )
 from src.vision.foreground import ForegroundInfo, read_foreground
+from src.vision.see_screen import CHANNEL_LOCAL, see_screen
 
 logger = logging.getLogger(__name__)
 WEB_DIR = REPO_ROOT / "web"
@@ -152,6 +156,7 @@ def _attach_runtime(
     app.state.last_seen_foreground_signature = None
     app.state.last_commented_foreground_signature = None
     app.state.last_title_comment_at = 0.0
+    app.state.vision_paused = False
     speech_cfg = settings.get("speech") or {}
     api_base = str(speech_cfg.get("tts_api_base", DEFAULT_TTS_API_BASE))
     ref_rel = str(speech_cfg.get("tts_ref_dir", DEFAULT_REF_DIR))
@@ -410,6 +415,8 @@ def create_app(config: dict[str, Any] | None = None) -> FastAPI:
             "last_activity_ms": int(last_activity * 1000) if last_activity else None,
             "vision_enabled": bool(vision_cfg.get("enabled", DEFAULT_VISION_ENABLED)),
             "use_title": bool(vision_cfg.get("use_title", DEFAULT_USE_TITLE)),
+            "use_screenshot": bool(vision_cfg.get("use_screenshot", DEFAULT_USE_SCREENSHOT)),
+            "vision_paused": bool(getattr(app.state, "vision_paused", False)),
         }
 
     @app.get("/api/vision/foreground")
@@ -425,6 +432,49 @@ def create_app(config: dict[str, Any] | None = None) -> FastAPI:
             "scene": info.scene,
             "is_self": info.is_self,
             "signature": info.signature,
+        }
+
+    @app.get("/api/vision/status")
+    async def get_vision_status() -> dict[str, Any]:
+        vision_cfg = settings.get("vision") or {}
+        return {
+            "enabled": bool(vision_cfg.get("enabled", DEFAULT_VISION_ENABLED)),
+            "use_title": bool(vision_cfg.get("use_title", DEFAULT_USE_TITLE)),
+            "use_screenshot": bool(vision_cfg.get("use_screenshot", DEFAULT_USE_SCREENSHOT)),
+            "paused": bool(getattr(app.state, "vision_paused", False)),
+            "max_side_px": int(vision_cfg.get("max_side_px", DEFAULT_MAX_SIDE_PX)),
+        }
+
+    @app.post("/api/vision/pause")
+    async def set_vision_pause(payload: dict[str, Any]) -> dict[str, Any]:
+        enabled = payload.get("paused")
+        if not isinstance(enabled, bool):
+            raise HTTPException(status_code=400, detail="paused must be boolean")
+        app.state.vision_paused = enabled
+        logger.info("vision paused=%s", enabled)
+        return {"paused": enabled}
+
+    @app.post("/api/vision/see_screen")
+    async def api_see_screen() -> dict[str, Any]:
+        """本机主动看一眼。不写记忆，不给 QQ 用。"""
+        vision_cfg = settings.get("vision") or {}
+        sight = await see_screen(
+            getattr(app.state, "llm", None),
+            channel=CHANNEL_LOCAL,
+            paused=bool(getattr(app.state, "vision_paused", False)),
+            use_screenshot=bool(vision_cfg.get("use_screenshot", DEFAULT_USE_SCREENSHOT)),
+            process_blacklist=_string_list(vision_cfg.get("process_blacklist")),
+            title_keywords_blacklist=_string_list(vision_cfg.get("title_keywords_blacklist")),
+            max_side_px=int(vision_cfg.get("max_side_px", DEFAULT_MAX_SIDE_PX)),
+            jpeg_quality=int(vision_cfg.get("jpeg_quality", DEFAULT_JPEG_QUALITY)),
+            vision_model=os.environ.get("LLM_VISION_MODEL") or None,
+        )
+        return {
+            "description": sight.description,
+            "blocked": sight.blocked,
+            "paused": sight.paused,
+            "reason": sight.reason,
+            "foreground": _foreground_json(sight.foreground),
         }
 
     @app.post("/api/proactive/trigger")
@@ -484,12 +534,14 @@ async def _trigger_proactive(app: FastAPI, settings: dict[str, Any]) -> dict[str
     now = time.time()
     vision_on = bool(vision_cfg.get("enabled", DEFAULT_VISION_ENABLED))
     use_title = vision_on and bool(vision_cfg.get("use_title", DEFAULT_USE_TITLE))
+    use_screenshot = vision_on and bool(vision_cfg.get("use_screenshot", DEFAULT_USE_SCREENSHOT))
     title_cooldown_s = float(vision_cfg.get("title_cooldown_s", DEFAULT_TITLE_COOLDOWN_S))
     focus_idle_timeout_s = float(
         vision_cfg.get("focus_idle_timeout_s", DEFAULT_FOCUS_IDLE_TIMEOUT_S)
     )
+    vision_paused = bool(getattr(app.state, "vision_paused", False))
 
-    foreground = read_foreground() if use_title else None
+    foreground = read_foreground() if use_title or use_screenshot else None
     last_seen = getattr(app.state, "last_seen_foreground_signature", None)
     last_commented = getattr(app.state, "last_commented_foreground_signature", None)
     last_title_comment_at = float(getattr(app.state, "last_title_comment_at", 0.0))
@@ -530,6 +582,28 @@ async def _trigger_proactive(app: FastAPI, settings: dict[str, Any]) -> dict[str
         use_title=use_title,
     )
     prompt_foreground = foreground if attach else None
+    screen_description = None
+    screen_meta: dict[str, Any] | None = None
+    if attach and use_screenshot and not vision_paused:
+        sight = await see_screen(
+            getattr(app.state, "llm", None),
+            channel=CHANNEL_LOCAL,
+            paused=False,
+            use_screenshot=True,
+            foreground=foreground,
+            process_blacklist=_string_list(vision_cfg.get("process_blacklist")),
+            title_keywords_blacklist=_string_list(vision_cfg.get("title_keywords_blacklist")),
+            max_side_px=int(vision_cfg.get("max_side_px", DEFAULT_MAX_SIDE_PX)),
+            jpeg_quality=int(vision_cfg.get("jpeg_quality", DEFAULT_JPEG_QUALITY)),
+            vision_model=os.environ.get("LLM_VISION_MODEL") or None,
+        )
+        screen_description = sight.description
+        screen_meta = {
+            "blocked": sight.blocked,
+            "reason": sight.reason,
+            "has_description": bool(sight.description),
+        }
+
     inbound = InboundMessage(
         message_id=str(uuid4()),
         channel="web",
@@ -540,9 +614,13 @@ async def _trigger_proactive(app: FastAPI, settings: dict[str, Any]) -> dict[str
         text=generate_proactive_prompt(
             reason=decision.reason or "idle",
             foreground=prompt_foreground,
+            screen_description=screen_description,
         ),
         created_at=now,
         raw_type="proactive",
+        vision=(
+            {"description": screen_description, "persist": False} if screen_description else None
+        ),
     )
     gateway: Gateway = app.state.gateway
     result = await gateway.handle(inbound)
@@ -566,10 +644,11 @@ async def _trigger_proactive(app: FastAPI, settings: dict[str, Any]) -> dict[str
     audio_url = await _synthesize_outbound_audio(app, outbound)
     await _broadcast_outbound(app, outbound, audio_url)
     logger.info(
-        "proactive triggered message_id=%s reason=%s scene=%s clients=%s",
+        "proactive triggered message_id=%s reason=%s scene=%s screen=%s clients=%s",
         outbound.message_id,
         decision.reason,
         None if prompt_foreground is None else prompt_foreground.scene,
+        bool(screen_description),
         app.state.chat_hub.client_count(),
     )
     return {
@@ -580,6 +659,7 @@ async def _trigger_proactive(app: FastAPI, settings: dict[str, Any]) -> dict[str
         "emotion": outbound.emotion,
         "audio_url": audio_url,
         "foreground": _foreground_json(prompt_foreground),
+        "screen": screen_meta,
     }
 
 
@@ -592,6 +672,14 @@ def _foreground_json(info: ForegroundInfo | None) -> dict[str, Any] | None:
         "scene": info.scene,
         "is_self": info.is_self,
     }
+
+
+def _string_list(value: object) -> list[str] | None:
+    if value is None:
+        return None
+    if not isinstance(value, list):
+        return None
+    return [str(item) for item in value if str(item).strip()]
 
 
 async def _synthesize_outbound_audio(app: FastAPI, outbound: OutboundMessage) -> str | None:

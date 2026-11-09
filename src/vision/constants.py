@@ -20,9 +20,36 @@ SCENE_LABELS: dict[str, str] = {
 
 DEFAULT_VISION_ENABLED = True
 DEFAULT_USE_TITLE = True
-DEFAULT_USE_SCREENSHOT = False
+DEFAULT_USE_SCREENSHOT = True
 DEFAULT_TITLE_COOLDOWN_S = 600.0
 DEFAULT_FOCUS_IDLE_TIMEOUT_S = 60.0
+DEFAULT_MAX_SIDE_PX = 768
+DEFAULT_JPEG_QUALITY = 80
+DEFAULT_PERSIST_FRAMES = False
+
+DEFAULT_PROCESS_BLACKLIST = (
+    "KeePass",
+    "KeePassXC",
+    "1Password",
+    "Bitwarden",
+    "LastPass",
+    "银行",
+)
+
+DEFAULT_TITLE_KEYWORDS_BLACKLIST = (
+    "支付",
+    "密码",
+    "password",
+    "验证码",
+    "银行",
+    "网银",
+)
+
+SCREEN_DESCRIBE_PROMPT = (
+    "用一句中文描述这张电脑屏幕上正在发生什么。"
+    "只说可见事实，不要猜测隐私内容，不要提密码、验证码、金额数字。"
+    "不要自我介绍，不要列表。"
+)
 
 SELF_PROCESS_NAMES = frozenset(
     {

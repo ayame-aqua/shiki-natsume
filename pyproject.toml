@@ -16,6 +16,8 @@ dependencies = [
     "websockets>=13.0",
     "numpy>=2.0.0",
     "lancedb>=0.21.0",
+    "mss>=9.0.0",
+    "pillow>=10.0.0",
 ]
 
 [project.optional-dependencies]

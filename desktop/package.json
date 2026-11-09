@@ -1,6 +1,6 @@
 {
   "name": "shiki-natsume-desktop",
-  "version": "0.62.0",
+  "version": "0.66.0",
   "description": "四季夏目桌宠窗口",
   "main": "main.js",
   "scripts": {

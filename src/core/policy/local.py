@@ -24,8 +24,9 @@ PROACTIVE_FOCUS_INSTRUCTION = (
 )
 
 PROACTIVE_VISION_RULES = (
-    "若给出了前台窗口线索，可以轻轻提到你看见的情况；"
-    "不要编造屏幕上的具体内容，也不要复述完整窗口标题。"
+    "若给出了前台窗口或屏幕线索，可以轻轻提到你看见的情况；"
+    "不要编造看不见的细节，不要复述完整窗口标题，"
+    "也不要把屏幕内容写进 memory_candidates。"
 )
 
 
@@ -33,13 +34,22 @@ def generate_proactive_prompt(
     *,
     reason: str = "idle",
     foreground: ForegroundInfo | None = None,
+    screen_description: str | None = None,
 ) -> str:
     """送给 Agent 的 system 指令，不是伪装成用户说的话。"""
     base = PROACTIVE_FOCUS_INSTRUCTION if reason == "focus_change" else PROACTIVE_IDLE_INSTRUCTION
-    vision = _foreground_hint(foreground)
-    if vision:
-        return f"{base}{PROACTIVE_VISION_RULES}\n{vision}"
-    return base
+    parts = [base]
+    vision_bits = []
+    foreground_hint = _foreground_hint(foreground)
+    if foreground_hint:
+        vision_bits.append(foreground_hint)
+    description = (screen_description or "").strip()
+    if description:
+        vision_bits.append(f"屏幕上看起来：{description}")
+    if vision_bits:
+        parts.append(PROACTIVE_VISION_RULES)
+        parts.extend(vision_bits)
+    return "".join(parts) if len(parts) == 1 else "\n".join(parts)
 
 
 def _foreground_hint(foreground: ForegroundInfo | None) -> str:
@@ -54,7 +64,7 @@ def _foreground_hint(foreground: ForegroundInfo | None) -> str:
 
 
 def _short_title(title: str, *, max_chars: int = 48) -> str:
-    text = " ".join((title or "").split())
+    text = " ".join((title or "").strip().split())
     if len(text) <= max_chars:
         return text
     return text[: max_chars - 1] + "…"
