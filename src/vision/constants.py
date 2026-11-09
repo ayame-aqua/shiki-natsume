@@ -37,9 +37,7 @@ SELF_WINDOW_TITLES = frozenset(
     }
 )
 
-SELF_ELECTRON_TITLE_PREFIXES = (
-    "developer tools - http://127.0.0.1:8787",
-)
+SELF_ELECTRON_TITLE_PREFIXES = ("developer tools - http://127.0.0.1:8787",)
 
 WORK_PROCESS_KEYWORDS = (
     "code",
