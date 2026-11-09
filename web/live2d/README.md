@@ -32,6 +32,14 @@ web/live2d/
       "sad": "sad",
       "angry": "angry",
       "shy": "blush"
+    },
+    "motionMap": {
+      "nod": "nod",
+      "shake": "shake",
+      "idle": "idle",
+      "talk": "talk",
+      "tap_head": "nod",
+      "tap_body": "shake"
     }
   }
 ]
@@ -45,6 +53,10 @@ web/live2d/
 - `emotionMap`：表情映射关系
   - 键：Agent 输出的 emotion（neutral/happy/sad/angry/shy）
   - 值：模型中对应的 motion 名称（需与模型文件中的 motion 组名对应）
+- `motionMap`（P5-S5，可选）：点击 / 动作映射
+  - `nod` / `shake` / `idle` / `talk`：逻辑动作名 → 模型 motion 组名
+  - `tap_head` / `tap_body`：点头、点身时播哪一组；默认分别落到 `nod` / `shake`
+  - 没有命中区时按 `nod → shake → idle` 轮换
 
 ## 表情映射
 
@@ -71,10 +83,12 @@ Agent 会输出以下 5 种基础情绪：
 
 - **自动口型同步**：播放 TTS 时，根据音频振幅驱动 `ParamMouthOpenY`
 - **表情切换**：根据对话内容自动切换表情，2 秒后回到中性
+- **点击互动（P5-S5）**：点模型播 `nod` / `shake` 等 motion；有 HitArea 时区分头/身。不打断聊天、看屏、TTS
 - **Idle 动画**：
   - 眨眼：每 4 秒触发一次
   - 呼吸：平滑循环变化
 - **优雅降级**：未配置模型时显示"未配置模型"占位符，不影响聊天和语音功能
+- **桌宠窗**：Electron 下画布 `no-drag`，可点皮；拖窗仍用标题栏
 
 ## 故障排查
 

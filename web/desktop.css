@@ -8,6 +8,12 @@
   cursor: move;
 }
 
+/* 画布可点皮播 motion；拖窗仍走标题栏 / 占位区。 */
+#live2d-canvas {
+  -webkit-app-region: no-drag;
+  cursor: pointer;
+}
+
 button,
 textarea,
 input,

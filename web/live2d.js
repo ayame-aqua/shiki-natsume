@@ -16,6 +16,8 @@ const BLINK_INTERVAL_MS = 4000;
 const BLINK_CLOSED_MS = 150;
 const BREATH_PERIOD_MS = 3000;
 const EMOTION_RELEASE_MS = 1500;
+const TAP_COOLDOWN_MS = 450;
+const MOTION_PRIORITY_FORCE = 3;
 const EMOTION_MAP = {
   neutral: "idle",
   happy: "smile",
@@ -23,6 +25,15 @@ const EMOTION_MAP = {
   angry: "angry",
   shy: "blush",
 };
+const DEFAULT_MOTION_MAP = {
+  nod: "nod",
+  shake: "shake",
+  idle: "idle",
+  talk: "talk",
+  tap_head: "nod",
+  tap_body: "shake",
+};
+const TAP_FALLBACK_ORDER = ["nod", "shake", "idle"];
 
 let pixiApp = null;
 let live2dModel = null;
@@ -35,6 +46,8 @@ let currentEmotion = "neutral";
 let emotionReleaseTimer = null;
 let nextBlinkAt = 0;
 let blinkUntil = 0;
+let lastTapAt = 0;
+let tapFallbackIndex = 0;
 
 function placeholderEl() {
   return document.getElementById("live2d-placeholder");
@@ -77,6 +90,43 @@ function mappedEmotionName(emotion) {
     return modelConfig.emotionMap[emotion];
   }
   return fallback;
+}
+
+function mappedMotionName(motionKey) {
+  const key = String(motionKey || "").trim();
+  if (!key) {
+    return DEFAULT_MOTION_MAP.idle;
+  }
+  if (modelConfig && modelConfig.motionMap && modelConfig.motionMap[key]) {
+    return String(modelConfig.motionMap[key]);
+  }
+  return DEFAULT_MOTION_MAP[key] || key;
+}
+
+function pickTapMotionKey(hitAreas) {
+  const joined = (Array.isArray(hitAreas) ? hitAreas : [])
+    .map((item) => String(item).toLowerCase())
+    .join(" ");
+  if (
+    joined.includes("head") ||
+    joined.includes("face") ||
+    joined.includes("hair") ||
+    joined.includes("头") ||
+    joined.includes("脸")
+  ) {
+    return "tap_head";
+  }
+  if (
+    joined.includes("body") ||
+    joined.includes("bust") ||
+    joined.includes("胸") ||
+    joined.includes("身")
+  ) {
+    return "tap_body";
+  }
+  const key = TAP_FALLBACK_ORDER[tapFallbackIndex % TAP_FALLBACK_ORDER.length];
+  tapFallbackIndex += 1;
+  return key;
 }
 
 function mouthParamName() {
@@ -213,6 +263,64 @@ function applyNamedLook(name) {
   return applied;
 }
 
+function playMotion(motionKey) {
+  if (!live2dModel) {
+    return false;
+  }
+  const name = mappedMotionName(motionKey);
+  if (!hasMotion(name)) {
+    console.info("Motion missing:", motionKey, "->", name);
+    return false;
+  }
+  try {
+    live2dModel.motion(name, undefined, MOTION_PRIORITY_FORCE);
+    console.info("Motion played:", motionKey, "->", name);
+    return true;
+  } catch (error) {
+    console.warn("Motion failed:", name, error);
+    return false;
+  }
+}
+
+function handleModelTap(hitAreas) {
+  const now = Date.now();
+  if (now - lastTapAt < TAP_COOLDOWN_MS) {
+    return;
+  }
+  lastTapAt = now;
+  const key = pickTapMotionKey(hitAreas);
+  if (playMotion(key)) {
+    return;
+  }
+  for (const fallback of TAP_FALLBACK_ORDER) {
+    if (playMotion(fallback)) {
+      return;
+    }
+  }
+}
+
+function bindModelInteraction() {
+  if (!live2dModel) {
+    return;
+  }
+  live2dModel.eventMode = "static";
+  live2dModel.interactive = true;
+  live2dModel.cursor = "pointer";
+  live2dModel.off("pointertap");
+  live2dModel.on("pointertap", (event) => {
+    let hitAreas = [];
+    try {
+      const global = event?.data?.global;
+      if (global && typeof live2dModel.hitTest === "function") {
+        hitAreas = live2dModel.hitTest(global.x, global.y) || [];
+      }
+    } catch {
+      hitAreas = [];
+    }
+    handleModelTap(hitAreas);
+  });
+}
+
 async function loadLive2DModel(config) {
   if (typeof Live2DCubismCore === "undefined") {
     throw new Error("cubism core missing");
@@ -241,6 +349,7 @@ async function loadLive2DModel(config) {
   live2dModel.y = height * DEFAULT_MODEL_ANCHOR_Y;
   pixiApp.stage.addChild(live2dModel);
   hookModelUpdate();
+  bindModelInteraction();
   bindResize(container);
   hidePlaceholder();
   nextBlinkAt = Date.now() + BLINK_INTERVAL_MS;
@@ -346,6 +455,7 @@ window.live2d = {
   init: initLive2D,
   setEmotion,
   releaseEmotion,
+  playMotion,
   startLipSync,
   stopLipSync,
   cleanup: cleanupLive2D,

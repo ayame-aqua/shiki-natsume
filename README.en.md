@@ -29,7 +29,7 @@ Local talk and QQ talk are **not the same voice**:
 | What she sees | Later: your screen | Group messages |
 | How she answers | Text + Japanese TTS + skin | Short lines, stickers, MCP images |
 
-Current tag **v0.66**. Web chat, memory, the voice path, a Live2D placeholder, the transparent pet window, idle proactive talk, window titles, and screenshot descriptions are in the repo. Barge-in and QQ login are not.
+Current tag **v0.67**. Web chat, memory, the voice path, a Live2D placeholder, the transparent pet window, idle proactive talk, window titles, screenshot descriptions, and click motions are in the repo. Voice barge-in and QQ login are not.
 
 ---
 
@@ -200,7 +200,7 @@ Numbers are execution order. A hard dependency that is not accepted blocks the n
 | P3-A | Speak | Wired in repo |
 | P3-B / C | Hear / live turns | Wired in repo |
 | P4 | Live2D mouth + face | Wired; waiting for a skin |
-| P5 | Pet window + screen + barge-in | Window + idle + title + screenshot wired; barge-in / motion not done |
+| P5 | Pet window + screen + barge-in | Window + idle + title + screenshot + click motion wired; voice barge-in not done |
 | P6 | QQ | Last. DSH qqbot is I/O only |
 | P7 | WeChat | Last. Compliance first |
 | P8 | Own base model + LoRA | Source lines from the original Natsume; no training now |
