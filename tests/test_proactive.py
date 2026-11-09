@@ -121,7 +121,9 @@ def test_proactive_status_and_dnd() -> None:
     assert ok.json()["do_not_disturb"] is True
     blocked = client.post("/api/proactive/trigger")
     assert blocked.status_code == 200
-    assert blocked.json() == {"triggered": False, "reason": "do_not_disturb"}
+    body = blocked.json()
+    assert body["triggered"] is False
+    assert body["reason"] == "do_not_disturb"
 
 
 def test_proactive_disabled_and_not_idle() -> None:

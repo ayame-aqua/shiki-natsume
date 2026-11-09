@@ -36,7 +36,7 @@ from src.core.policy.local import (
     DEFAULT_IDLE_TIMEOUT_S,
     generate_proactive_prompt,
 )
-from src.core.proactive import decide_proactive
+from src.core.proactive import decide_proactive, should_attach_foreground
 from src.core.session import SessionStore
 from src.core.types import InboundMessage, OutboundMessage
 from src.gateway import Gateway
@@ -73,6 +73,13 @@ from src.speech.constants import (
 )
 from src.speech.debug_log import speech_debug
 from src.speech.tts import SoVitsTts, TtsError
+from src.vision.constants import (
+    DEFAULT_FOCUS_IDLE_TIMEOUT_S,
+    DEFAULT_TITLE_COOLDOWN_S,
+    DEFAULT_USE_TITLE,
+    DEFAULT_VISION_ENABLED,
+)
+from src.vision.foreground import ForegroundInfo, read_foreground
 
 logger = logging.getLogger(__name__)
 WEB_DIR = REPO_ROOT / "web"
@@ -142,6 +149,9 @@ def _attach_runtime(
     app.state.started_at = time.time()
     app.state.last_proactive_time = 0.0
     app.state.do_not_disturb = bool(proactive_cfg.get("do_not_disturb", False))
+    app.state.last_seen_foreground_signature = None
+    app.state.last_commented_foreground_signature = None
+    app.state.last_title_comment_at = 0.0
     speech_cfg = settings.get("speech") or {}
     api_base = str(speech_cfg.get("tts_api_base", DEFAULT_TTS_API_BASE))
     ref_rel = str(speech_cfg.get("tts_ref_dir", DEFAULT_REF_DIR))
@@ -389,6 +399,7 @@ def create_app(config: dict[str, Any] | None = None) -> FastAPI:
     @app.get("/api/proactive/status")
     async def get_proactive_status() -> dict[str, Any]:
         proactive_cfg = settings.get("proactive") or {}
+        vision_cfg = settings.get("vision") or {}
         sessions: SessionStore = app.state.sessions
         last_activity = sessions.last_activity_time(DEFAULT_CHAT_ID)
         return {
@@ -397,6 +408,23 @@ def create_app(config: dict[str, Any] | None = None) -> FastAPI:
             "idle_timeout_s": int(proactive_cfg.get("idle_timeout_s", DEFAULT_IDLE_TIMEOUT_S)),
             "cooldown_s": int(proactive_cfg.get("cooldown_s", DEFAULT_COOLDOWN_S)),
             "last_activity_ms": int(last_activity * 1000) if last_activity else None,
+            "vision_enabled": bool(vision_cfg.get("enabled", DEFAULT_VISION_ENABLED)),
+            "use_title": bool(vision_cfg.get("use_title", DEFAULT_USE_TITLE)),
+        }
+
+    @app.get("/api/vision/foreground")
+    async def get_foreground() -> dict[str, Any]:
+        """本机冒烟：看当前前台标题/场景。不截屏。"""
+        info = read_foreground()
+        if info is None:
+            return {"available": False}
+        return {
+            "available": True,
+            "title": info.title,
+            "process": info.process,
+            "scene": info.scene,
+            "is_self": info.is_self,
+            "signature": info.signature,
         }
 
     @app.post("/api/proactive/trigger")
@@ -451,8 +479,21 @@ def create_app(config: dict[str, Any] | None = None) -> FastAPI:
 
 async def _trigger_proactive(app: FastAPI, settings: dict[str, Any]) -> dict[str, Any]:
     proactive_cfg = settings.get("proactive") or {}
+    vision_cfg = settings.get("vision") or {}
     sessions: SessionStore = app.state.sessions
     now = time.time()
+    vision_on = bool(vision_cfg.get("enabled", DEFAULT_VISION_ENABLED))
+    use_title = vision_on and bool(vision_cfg.get("use_title", DEFAULT_USE_TITLE))
+    title_cooldown_s = float(vision_cfg.get("title_cooldown_s", DEFAULT_TITLE_COOLDOWN_S))
+    focus_idle_timeout_s = float(
+        vision_cfg.get("focus_idle_timeout_s", DEFAULT_FOCUS_IDLE_TIMEOUT_S)
+    )
+
+    foreground = read_foreground() if use_title else None
+    last_seen = getattr(app.state, "last_seen_foreground_signature", None)
+    last_commented = getattr(app.state, "last_commented_foreground_signature", None)
+    last_title_comment_at = float(getattr(app.state, "last_title_comment_at", 0.0))
+
     decision = decide_proactive(
         enabled=bool(proactive_cfg.get("enabled", False)),
         do_not_disturb=bool(getattr(app.state, "do_not_disturb", False)),
@@ -462,10 +503,33 @@ async def _trigger_proactive(app: FastAPI, settings: dict[str, Any]) -> dict[str
         last_proactive=float(getattr(app.state, "last_proactive_time", 0.0)),
         idle_timeout_s=float(proactive_cfg.get("idle_timeout_s", DEFAULT_IDLE_TIMEOUT_S)),
         cooldown_s=float(proactive_cfg.get("cooldown_s", DEFAULT_COOLDOWN_S)),
+        foreground=foreground,
+        last_seen_signature=last_seen,
+        last_commented_signature=last_commented,
+        last_title_comment_at=last_title_comment_at,
+        title_cooldown_s=title_cooldown_s,
+        focus_idle_timeout_s=focus_idle_timeout_s,
+        use_title=use_title,
     )
+    if foreground is not None:
+        app.state.last_seen_foreground_signature = foreground.signature
     if not decision.allowed:
-        return {"triggered": False, "reason": decision.reason}
+        return {
+            "triggered": False,
+            "reason": decision.reason,
+            "foreground": _foreground_json(foreground) if foreground else None,
+        }
 
+    attach = should_attach_foreground(
+        decision_reason=decision.reason,
+        foreground=foreground,
+        last_commented_signature=last_commented,
+        last_title_comment_at=last_title_comment_at,
+        now=now,
+        title_cooldown_s=title_cooldown_s,
+        use_title=use_title,
+    )
+    prompt_foreground = foreground if attach else None
     inbound = InboundMessage(
         message_id=str(uuid4()),
         channel="web",
@@ -473,7 +537,10 @@ async def _trigger_proactive(app: FastAPI, settings: dict[str, Any]) -> dict[str
         chat_id=DEFAULT_CHAT_ID,
         sender_id="system",
         sender_name="system",
-        text=generate_proactive_prompt(),
+        text=generate_proactive_prompt(
+            reason=decision.reason or "idle",
+            foreground=prompt_foreground,
+        ),
         created_at=now,
         raw_type="proactive",
     )
@@ -493,19 +560,37 @@ async def _trigger_proactive(app: FastAPI, settings: dict[str, Any]) -> dict[str
 
     outbound = result.outbound
     app.state.last_proactive_time = now
+    if attach and foreground is not None and not foreground.is_self:
+        app.state.last_commented_foreground_signature = foreground.signature
+        app.state.last_title_comment_at = now
     audio_url = await _synthesize_outbound_audio(app, outbound)
     await _broadcast_outbound(app, outbound, audio_url)
     logger.info(
-        "proactive triggered message_id=%s clients=%s",
+        "proactive triggered message_id=%s reason=%s scene=%s clients=%s",
         outbound.message_id,
+        decision.reason,
+        None if prompt_foreground is None else prompt_foreground.scene,
         app.state.chat_hub.client_count(),
     )
     return {
         "triggered": True,
         "message_id": outbound.message_id,
+        "reason": decision.reason,
         "texts": outbound.texts,
         "emotion": outbound.emotion,
         "audio_url": audio_url,
+        "foreground": _foreground_json(prompt_foreground),
+    }
+
+
+def _foreground_json(info: ForegroundInfo | None) -> dict[str, Any] | None:
+    if info is None:
+        return None
+    return {
+        "title": info.title,
+        "process": info.process,
+        "scene": info.scene,
+        "is_self": info.is_self,
     }
 
 

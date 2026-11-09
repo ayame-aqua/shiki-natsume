@@ -57,3 +57,15 @@ proactive:
   random_talk_prob: 0.1
   cooldown_s: 600
   do_not_disturb: false
+
+# P5-S3：只读前台标题；截屏留给 S4（use_screenshot 先关）。
+vision:
+  enabled: true
+  use_title: true
+  use_screenshot: false
+  title_cooldown_s: 600
+  focus_idle_timeout_s: 60
+  process_blacklist: []
+  title_keywords_blacklist: []
+  max_side_px: 768
+  persist_frames: false
